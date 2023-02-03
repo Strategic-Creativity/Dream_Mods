@@ -89,6 +89,11 @@ namespace MyFirstPlugin
 
         private void TryPatch(ModType mod)
         {
+            if (multiplayerActive) 
+            {
+                Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
+                return;
+            }
             if (patchesHashSet.Contains(mod))
             {
                 LogThisInfo($"{mod.ToString()} mod is already active");
@@ -119,6 +124,11 @@ namespace MyFirstPlugin
 
         private void TryUnpatch(ModType mod)
         {
+            if (multiplayerActive) 
+            {
+                Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
+                return;
+            }
             if (!patchesHashSet.Contains(mod))
             {
                 LogThisInfo($"{mod.ToString()} mod is already disabled");
@@ -151,6 +161,7 @@ namespace MyFirstPlugin
         {
             if (scene == SceneManager.GetSceneByBuildIndex(10))
             {
+                Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
                 this.harmony.UnpatchSelf();
                 this.multiplayerActive = true;
             }
@@ -160,6 +171,7 @@ namespace MyFirstPlugin
         {
             if (scene == SceneManager.GetSceneByBuildIndex(10))
             {
+                Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
                 foreach (ModType item in this.patchesHashSet)
                 {
                     switch (item)
