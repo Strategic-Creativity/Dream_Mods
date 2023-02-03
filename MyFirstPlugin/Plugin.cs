@@ -1,6 +1,8 @@
 ﻿using BepInEx;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -13,6 +15,7 @@ namespace MyFirstPlugin
         private Harmony harmony;
 
         private HashSet<ModType> patchesHashSet;
+        private bool multiplayerActive = false;
 
         private enum ModType
         {
@@ -31,10 +34,13 @@ namespace MyFirstPlugin
             this.patchesHashSet = new HashSet<ModType>();
             Logger.LogInfo("Press 'TAB' inside game for mods info and hotkeys.\n Note : Key input only works in-game.\n Note : Press 'Shift + (hotkey)' to deativate mods.");
             this.harmony.PatchAll(typeof(ShieldBugFix));
+            SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
+            SceneManager.sceneUnloaded += this.onModsEnabled;
         }
 
         private void Update()
         {
+
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.Tab))
             {
                 LogModInfo();
@@ -141,6 +147,44 @@ namespace MyFirstPlugin
             LogModInfo();
         }
 
+        private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
+        {
+            if (scene == SceneManager.GetSceneByBuildIndex(10))
+            {
+                this.harmony.UnpatchSelf();
+                this.multiplayerActive = true;
+            }
+        }
+
+        private void onModsEnabled(Scene scene)
+        {
+            if (scene == SceneManager.GetSceneByBuildIndex(10))
+            {
+                foreach (ModType item in this.patchesHashSet)
+                {
+                    switch (item)
+                    {
+                        case ModType.WolfSwapJump:
+                            this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.All);
+                            break;
+                        case ModType.WolfMultiJump:
+                            this.harmony.Unpatch(typeof(Piece).GetMethod("HandleCapturerPieceLogic"), HarmonyPatchType.All);
+                            break;
+                        case ModType.AllFactionsCanDoQueenPromotion:
+                            this.harmony.Unpatch(typeof(UpgradeSelect).GetMethod("Open"), HarmonyPatchType.All);
+                            break;
+                        case ModType.AllFactionsCanCaptureOwnPawns:
+                            this.harmony.Unpatch(typeof(Piece).GetMethod("validateTarget"), HarmonyPatchType.All);
+                            break;
+                        default:
+                            Logger.LogError($"{item.ToString()} mod is currently not supported");
+                            return;
+                    }
+                }
+                this.multiplayerActive = false;
+            }
+        }
+
         private void LogModInfo()
         {
             //int expectedCapacity = System.Enum.GetValues(typeof(ModType)).Length * 4 + 3;
@@ -189,7 +233,7 @@ namespace MyFirstPlugin
             {
                 if (piece.isCaptured || !piece.inPlay)
                 {
-                    
+
                     break;
                 }
                 List<Piece> list = new List<Piece>();
@@ -279,7 +323,7 @@ namespace MyFirstPlugin
         [HarmonyPrefix]
         public static bool Prefix(Piece __instance, [HarmonyArgument(0)] int pid, [HarmonyArgument(1)] Piece target, ref bool __result)
         {
-            if(target != null && !target.Invincible && !__instance.TargetIsShielded(target) && !__instance.patterns[pid].cantTarget && 
+            if (target != null && !target.Invincible && !__instance.TargetIsShielded(target) && !__instance.patterns[pid].cantTarget &&
             target.team == __instance.team && !__instance.PieceType.IsPawn() && target.PieceType.IsPawn())
             {
                 __result = true;
