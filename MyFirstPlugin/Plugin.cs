@@ -34,8 +34,10 @@ namespace MyFirstPlugin
             this.patchesHashSet = new HashSet<ModType>();
             Logger.LogInfo("Press 'TAB' inside game for mods info and hotkeys.\n Note : Key input only works in-game.\n Note : Press 'Shift + (hotkey)' to deativate mods.");
             this.harmony.PatchAll(typeof(ShieldBugFix));
+            this.harmony.PatchAll(typeof(BoardEditorMod));
+            //this.harmony.PatchAll(typeof(BoardEditorMod_PiecePatch));
             SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
-            SceneManager.sceneUnloaded += this.onModsEnabled;
+            SceneManager.sceneUnloaded += this.onModsEnabledForSingleplayer;
         }
 
         private void Update()
@@ -43,6 +45,7 @@ namespace MyFirstPlugin
 
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.Tab))
             {
+                Logger.LogInfo("\n BoardEditorMod (Usage): Select any piece and then hold 'Shift' \n & click anywhere on board to clone it(for white color team), \n or hold 'Shift + Alt' to make clone for black color team \n Note : It takes one turn to fully register pieces.");
                 LogModInfo();
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
@@ -89,7 +92,7 @@ namespace MyFirstPlugin
 
         private void TryPatch(ModType mod)
         {
-            if (multiplayerActive) 
+            if (multiplayerActive)
             {
                 Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
                 return;
@@ -124,7 +127,7 @@ namespace MyFirstPlugin
 
         private void TryUnpatch(ModType mod)
         {
-            if (multiplayerActive) 
+            if (multiplayerActive)
             {
                 Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
                 return;
@@ -159,7 +162,7 @@ namespace MyFirstPlugin
 
         private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
         {
-            if (scene == SceneManager.GetSceneByBuildIndex(10))
+            if (PlayerInput.Instance.IsSceneLoaded(10))
             {
                 Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
                 this.harmony.UnpatchSelf();
@@ -167,11 +170,13 @@ namespace MyFirstPlugin
             }
         }
 
-        private void onModsEnabled(Scene scene)
+        private void onModsEnabledForSingleplayer(Scene scene)
         {
-            if (scene == SceneManager.GetSceneByBuildIndex(10))
+            if (!PlayerInput.Instance.IsSceneLoaded(10) && multiplayerActive)
             {
                 Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
+                this.harmony.PatchAll(typeof(ShieldBugFix));
+                this.harmony.PatchAll(typeof(BoardEditorMod));
                 foreach (ModType item in this.patchesHashSet)
                 {
                     switch (item)
@@ -216,7 +221,7 @@ namespace MyFirstPlugin
     [HarmonyPatch(typeof(Piece), "TargetIsShielded")]
     public static class ShieldBugFix
     {
-        //Main function only considers first shield to check fif target is shielded
+        //Main function only considers first shield to check if target is shielded
         [HarmonyPrefix]
         public static bool Prefix(Piece __instance, [HarmonyArgument(0)] Piece target, ref bool __result)
         {
@@ -279,6 +284,89 @@ namespace MyFirstPlugin
         }
     }
 
+    [HarmonyPatch(typeof(Board), "OnMouseDown")]
+    public static class BoardEditorMod
+    {
+        //
+        [HarmonyPrefix]
+        public static bool Prefix(Board __instance)
+        {
+
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            {
+                if (PlayerInput.Instance.upgradeselect_hook.is_enabled)
+                {
+                    return false;
+                }
+                Vector3 vector = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                BoardSquare s = new BoardSquare(Mathf.CeilToInt(vector.x + (float)Board.BOARDSIZE / 2f - 1f), Mathf.CeilToInt(vector.z + (float)Board.BOARDSIZE / 2f - 1f));
+                Plugin.Instance.LogThisInfo($". . . board clicked on {s.x}, {s.y} . . .");
+                if (s.isValid && __instance.selectedPiece != null)
+                {
+                    Piece sp = __instance.selectedPiece;
+                    Piece target = __instance.onSquare(s);
+                    if (target != null)
+                    {
+                        target.captured(0);
+                        UnityEngine.Object.Destroy(target.gameObject);
+                    }
+                    Team team = null;
+                    if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.AltGr) || Input.GetKey(KeyCode.RightAlt))
+                    {
+                        team = __instance.GetTeamByColor(TeamColor.Black);
+                    }
+                    else
+                    {
+                        team = __instance.GetTeamByColor(TeamColor.White);
+                    }
+                    Piece np = team.newPiece(sp.gameObject, new BoardSquare[] { s });
+                    np.DoTransition(sp.Position, s, false, 0.2f);
+                    np.findValidMoveList();
+                }
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(Piece), "OnMouseDown")]
+    public static class BoardEditorMod_PiecePatch
+    {
+        //
+        [HarmonyPrefix]
+        public static bool Prefix(Piece __instance)
+        {
+
+            if ((Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && __instance.board.selectedPiece != null)
+            {
+
+                BoardSquare s = __instance.Position;
+                Plugin.Instance.LogThisInfo($". . . board clicked on {s.x}, {s.y} . . .");
+                if (s.isValid && __instance.board.selectedPiece != null)
+                {
+                    Piece sp = __instance.board.selectedPiece;
+                    __instance.captured(0);
+                    Team team = null;
+                    if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.AltGr) || Input.GetKey(KeyCode.RightAlt))
+                    {
+                        team = __instance.board.GetTeamByColor(TeamColor.Black);
+                    }
+                    else
+                    {
+                        team = __instance.board.GetTeamByColor(TeamColor.White);
+                    }
+                    Piece np = team.newPiece(sp.gameObject, new BoardSquare[] { s });
+                    np.DoTransition(sp.Position, s, false, 0.2f);
+                    np.findValidMoveList();
+                    UnityEngine.Object.Destroy(__instance, 1.0f);
+                }
+
+                return false;
+            }
+            return true;
+        }
+    }
+
     [HarmonyPatch(typeof(PieceAction), "execute")]
     public static class WolfSwapJump
     {
@@ -289,7 +377,7 @@ namespace MyFirstPlugin
             Piece boardPiece = piece.board.onSquare(__instance.newPosition);
             if (Piece.CheckFriendlyCaptureDoubleTurn(piece, boardPiece))
             {
-                Plugin.Instance.LogThisInfo("Wolf jump patch if statment called.");
+                //Plugin.Instance.LogThisInfo("Wolf jump patch if statment called.");
                 boardPiece = piece.team.newPiece(boardPiece.gameObject, new BoardSquare[] { __instance.oldPosition });
                 boardPiece.DoTransition(__instance.newPosition, __instance.oldPosition, false, 0.2f);
             }
