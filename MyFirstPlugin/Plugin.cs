@@ -15,15 +15,36 @@ namespace MyFirstPlugin
         private Harmony harmony;
 
         private HashSet<ModType> patchesHashSet;
-        private bool multiplayerActive = false;
+        public bool multiplayerActive {get; private set;} = false;
+        public bool adventureModeActive{get; private set;} = false;
 
+        private enum OpModType
+        {
+            BoardEditorMod,
+            PieceRemoverMod,
+            WolfSwapJump
+        }
         private enum ModType
         {
-            WolfSwapJump,
             WolfMultiJump,
             AllFactionsCanDoQueenPromotion,
-            AllFactionsCanCaptureOwnPawns
+            AllFactionsCanCaptureOwnPawns,
+            AllFactionsHaveUnlimitedRange
         }
+
+        /*this.scenes[1].name = "1(main)";
+		this.scenes[5].name = "5(options)";
+		this.scenes[6].name = "6(beastiary)";
+		this.scenes[7].name = "7(Game)";
+		this.scenes[9].name = "9(Lobby)";
+		this.scenes[10].name = "10(Multiplayer)";
+		this.scenes[11].name = "11(Versus)";
+		this.scenes[12].name = "12(HowTo)";
+		this.scenes[13].name = "13(Credits)";
+		this.scenes[14].name = "14(Challenges)";
+		this.scenes[15].name = "15(1PChallenges)";
+		this.scenes[16].name = "16(Story)";
+		this.scenes[17].name = "17(StoryGame)";*/
 
         private void Awake()
         {
@@ -33,11 +54,13 @@ namespace MyFirstPlugin
             Plugin.Instance = this;
             this.patchesHashSet = new HashSet<ModType>();
             Logger.LogInfo("Press 'TAB' inside game for mods info and hotkeys.\n Note : Key input only works in-game.\n Note : Press 'Shift + (hotkey)' to deativate mods.");
-            this.harmony.PatchAll(typeof(ShieldBugFix));
-            this.harmony.PatchAll(typeof(BoardEditorMod));
-            //this.harmony.PatchAll(typeof(BoardEditorMod_PiecePatch));
+            this.PatchFixes();
+            this.PatchOpMods();
+            this.ActivateAllBalancedMods();
             SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
-            SceneManager.sceneUnloaded += this.onModsEnabledForSingleplayer;
+            SceneManager.sceneLoaded += this.onModsEnabledForSingleplayer;
+            SceneManager.sceneLoaded += this.onModsDisabledForAdventureMode;
+            SceneManager.sceneLoaded += this.onModsEnabledForNonAdventure;
         }
 
         private void Update()
@@ -45,42 +68,42 @@ namespace MyFirstPlugin
 
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.Tab))
             {
-                Logger.LogInfo("\n BoardEditorMod (Usage): Select any piece and then hold 'Shift' \n & click anywhere on board to clone it(for white color team), \n or hold 'Shift + Alt' to make clone for black color team \n Note : It takes one turn to fully register pieces.");
-                LogModInfo();
+                LogOpModInfo();
+                LogBalancedModInfo();
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
             {
-                this.TryPatch(ModType.WolfSwapJump);
+                this.TryPatch(ModType.WolfMultiJump);
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
             {
-                this.TryPatch(ModType.WolfMultiJump);
+                this.TryPatch(ModType.AllFactionsCanDoQueenPromotion);
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
             {
-                this.TryPatch(ModType.AllFactionsCanDoQueenPromotion);
+                this.TryPatch(ModType.AllFactionsCanCaptureOwnPawns);
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
             {
-                this.TryPatch(ModType.AllFactionsCanCaptureOwnPawns);
+                this.TryPatch(ModType.AllFactionsHaveUnlimitedRange);
             }
             if (UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift))
             {
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
                 {
-                    this.TryUnpatch(ModType.WolfSwapJump);
+                    this.TryUnpatch(ModType.WolfMultiJump);
                 }
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
                 {
-                    this.TryUnpatch(ModType.WolfMultiJump);
+                    this.TryUnpatch(ModType.AllFactionsCanDoQueenPromotion);
                 }
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
                 {
-                    this.TryUnpatch(ModType.AllFactionsCanDoQueenPromotion);
+                    this.TryUnpatch(ModType.AllFactionsCanCaptureOwnPawns);
                 }
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
                 {
-                    this.TryUnpatch(ModType.AllFactionsCanCaptureOwnPawns);
+                    this.TryUnpatch(ModType.AllFactionsHaveUnlimitedRange);
                 }
             }
         }
@@ -102,27 +125,10 @@ namespace MyFirstPlugin
                 LogThisInfo($"{mod.ToString()} mod is already active");
                 return;
             }
-            switch (mod)
-            {
-                case ModType.WolfSwapJump:
-                    this.harmony.PatchAll(typeof(WolfSwapJump));
-                    break;
-                case ModType.WolfMultiJump:
-                    this.harmony.PatchAll(typeof(WolfMultiJump));
-                    break;
-                case ModType.AllFactionsCanDoQueenPromotion:
-                    this.harmony.PatchAll(typeof(AllFactionsCanDoQueenPromotion));
-                    break;
-                case ModType.AllFactionsCanCaptureOwnPawns:
-                    this.harmony.PatchAll(typeof(AllFactionsCanCaptureOwnPawns));
-                    break;
-                default:
-                    Logger.LogError($"{mod.ToString()} mod is currently not supported");
-                    return;
-            }
+            this.PatchThisBalancedMod(mod);
             LogThisInfo($". . . {mod.ToString()} mod activated . . .");
             this.patchesHashSet.Add(mod);
-            LogModInfo();
+            LogBalancedModInfo();
         }
 
         private void TryUnpatch(ModType mod)
@@ -137,11 +143,120 @@ namespace MyFirstPlugin
                 LogThisInfo($"{mod.ToString()} mod is already disabled");
                 return;
             }
-            switch (mod)
+            this.UnpatchThisBalancedMod(mod);
+            LogThisInfo($". . . {mod.ToString()} mod disabled . . .");
+            this.patchesHashSet.Remove(mod);
+            LogBalancedModInfo();
+        }
+
+        private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
+        {
+            if (SceneManager.GetActiveScene().name == "10(Multiplayer)" && !this.multiplayerActive)
             {
-                case ModType.WolfSwapJump:
-                    this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.All);
+                Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
+                this.harmony.UnpatchSelf();
+                this.multiplayerActive = true;
+            }
+        }
+
+        private void onModsEnabledForSingleplayer(Scene scene, LoadSceneMode sceneMode)
+        {
+            //Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
+            if (SceneManager.GetActiveScene().name == "1(main)" && this.multiplayerActive)
+            {
+                Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
+                this.PatchFixes();
+                this.PatchOpMods();
+                foreach (ModType item in this.patchesHashSet)
+                {
+                    this.PatchThisBalancedMod(item);
+                }
+                this.multiplayerActive = false;
+            }
+        }
+
+        private void onModsDisabledForAdventureMode(Scene scene, LoadSceneMode sceneMode)
+        {
+            Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
+            if (SceneManager.GetActiveScene().name == "16(Story)" && !this.adventureModeActive)
+            {
+                Logger.LogWarning("!!! OP Mods have been disbled for adventure mode. !!!");
+                this.UnpatchOpMods();
+                this.adventureModeActive = true;
+            }
+        }
+
+        private void onModsEnabledForNonAdventure(Scene scene, LoadSceneMode sceneMode)
+        {
+            if (SceneManager.GetSceneByName("1(main)").isLoaded && this.adventureModeActive)
+            {
+                Logger.LogWarning("!!! OP Mods have been re-enabled for versus mode. !!!");
+                this.PatchOpMods();
+                this.adventureModeActive = false;
+            }
+        }
+
+        private void PatchFixes()
+        {
+            this.harmony.PatchAll(typeof(ShieldBugFix));
+        }
+
+        private void PatchOpMods()
+        {
+
+            this.harmony.PatchAll(typeof(BoardEditorMod));
+            this.harmony.PatchAll(typeof(PieceRemoverMod));
+            this.harmony.PatchAll(typeof(WolfSwapJump));
+
+        }
+
+        private void UnpatchOpMods()
+        {
+
+            this.harmony.Unpatch(typeof(Board).GetMethod("OnMouseDown"), HarmonyPatchType.All);
+            this.harmony.Unpatch(typeof(Board).GetMethod("advance"), HarmonyPatchType.All);
+            this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.Postfix);
+
+        }
+
+        private void ActivateAllBalancedMods()
+        {
+            foreach (string mod in System.Enum.GetNames(typeof(ModType)))
+            {
+                ModType modType = (ModType)System.Enum.Parse(typeof(ModType), mod);
+                this.PatchThisBalancedMod(modType);
+                patchesHashSet.Add(modType);
+
+            }
+        }
+
+        private void PatchThisBalancedMod(ModType modType)
+        {
+            switch (modType)
+            {
+                case ModType.WolfMultiJump:
+                    this.harmony.PatchAll(typeof(WolfMultiJump));
                     break;
+                case ModType.AllFactionsCanDoQueenPromotion:
+                    this.harmony.PatchAll(typeof(AllFactionsCanDoQueenPromotion));
+                    break;
+                case ModType.AllFactionsCanCaptureOwnPawns:
+                    this.harmony.PatchAll(typeof(AllFactionsCanCaptureOwnPawns));
+                    this.harmony.PatchAll(typeof(AllFactionsCanCaptureOwnPawns_MovePatch));
+                    break;
+                case ModType.AllFactionsHaveUnlimitedRange:
+                    this.harmony.PatchAll(typeof(AllFactionsHaveUnlimitedRange));
+                    break;
+                default:
+                    Logger.LogError($"{modType.ToString()} mod is currently not supported");
+                    return;
+            }
+        }
+
+        private void UnpatchThisBalancedMod(ModType modType)
+        {
+            switch (modType)
+            {
                 case ModType.WolfMultiJump:
                     this.harmony.Unpatch(typeof(Piece).GetMethod("HandleCapturerPieceLogic"), HarmonyPatchType.All);
                     break;
@@ -150,63 +265,22 @@ namespace MyFirstPlugin
                     break;
                 case ModType.AllFactionsCanCaptureOwnPawns:
                     this.harmony.Unpatch(typeof(Piece).GetMethod("validateTarget"), HarmonyPatchType.All);
+                    this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.Prefix);
+                    break;
+                case ModType.AllFactionsHaveUnlimitedRange:
+                    this.harmony.Unpatch(typeof(Piece).GetMethod("findValidMoveList"), HarmonyPatchType.All);
                     break;
                 default:
-                    Logger.LogError($"{mod.ToString()} mod is currently not supported");
+                    Logger.LogError($"{modType.ToString()} mod is currently not supported");
                     return;
             }
-            LogThisInfo($". . . {mod.ToString()} mod disabled . . .");
-            this.patchesHashSet.Remove(mod);
-            LogModInfo();
         }
 
-        private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
-        {
-            if (PlayerInput.Instance.IsSceneLoaded(10))
-            {
-                Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
-                this.harmony.UnpatchSelf();
-                this.multiplayerActive = true;
-            }
-        }
-
-        private void onModsEnabledForSingleplayer(Scene scene)
-        {
-            if (!PlayerInput.Instance.IsSceneLoaded(10) && multiplayerActive)
-            {
-                Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
-                this.harmony.PatchAll(typeof(ShieldBugFix));
-                this.harmony.PatchAll(typeof(BoardEditorMod));
-                foreach (ModType item in this.patchesHashSet)
-                {
-                    switch (item)
-                    {
-                        case ModType.WolfSwapJump:
-                            this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.All);
-                            break;
-                        case ModType.WolfMultiJump:
-                            this.harmony.Unpatch(typeof(Piece).GetMethod("HandleCapturerPieceLogic"), HarmonyPatchType.All);
-                            break;
-                        case ModType.AllFactionsCanDoQueenPromotion:
-                            this.harmony.Unpatch(typeof(UpgradeSelect).GetMethod("Open"), HarmonyPatchType.All);
-                            break;
-                        case ModType.AllFactionsCanCaptureOwnPawns:
-                            this.harmony.Unpatch(typeof(Piece).GetMethod("validateTarget"), HarmonyPatchType.All);
-                            break;
-                        default:
-                            Logger.LogError($"{item.ToString()} mod is currently not supported");
-                            return;
-                    }
-                }
-                this.multiplayerActive = false;
-            }
-        }
-
-        private void LogModInfo()
+        private void LogBalancedModInfo()
         {
             //int expectedCapacity = System.Enum.GetValues(typeof(ModType)).Length * 4 + 3;
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.AppendLine("List of mods {(name) then (hotkey) then (state)} :");
+            sb.AppendLine("List of balanced mods {(name) then (hotkey) then (state)} :");
             int i = 1;
             foreach (string mod in System.Enum.GetNames(typeof(ModType)))
             {
@@ -215,6 +289,38 @@ namespace MyFirstPlugin
                 i++;
             }
             Logger.LogInfo(sb);
+        }
+
+        private void LogOpModInfo()
+        {
+            if (this.adventureModeActive)
+            {
+                Logger.LogWarning("OP Mods are disbled for adventure mode!");
+                return;
+            }
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine("List of OP mods and their usage :");
+            foreach (string opMod in System.Enum.GetNames(typeof(OpModType)))
+            {
+                sb.Append($"{opMod} (Usage) : ");
+                sb.AppendLine(this.GetOpModUsageInfoString((OpModType)System.Enum.Parse(typeof(OpModType), opMod)));
+            }
+            Logger.LogInfo(sb);
+        }
+
+        private string GetOpModUsageInfoString(OpModType opModType)
+        {
+            switch (opModType)
+            {
+                case OpModType.BoardEditorMod:
+                    return "Select any piece and then hold 'Shift' \n\t & click anywhere on board to clone it(for white color team), \n\t or hold 'Shift + Alt' to make clone for black color team. \n\t Note : It takes one turn to fully register pieces.";
+                case OpModType.PieceRemoverMod:
+                    return "Select any piece and press 'Delete' key to remove it.";
+                case OpModType.WolfSwapJump:
+                    return "Hold 'Shift' key while using 'blood jump' ability of wolf \n\t to swap places with pawn instead of capturing it.";
+                default:
+                    return "This mod is currently work in progress";
+            }
         }
     }
 
@@ -294,7 +400,7 @@ namespace MyFirstPlugin
 
             if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
             {
-                if (PlayerInput.Instance.upgradeselect_hook.is_enabled)
+                if (PlayerInput.Instance !=  null && PlayerInput.Instance.upgradeselect_hook.is_enabled)
                 {
                     return false;
                 }
@@ -305,10 +411,9 @@ namespace MyFirstPlugin
                 {
                     Piece sp = __instance.selectedPiece;
                     Piece target = __instance.onSquare(s);
-                    if (target != null)
+                    if (target != null || sp.PieceType == PieceTypeEnum.King)
                     {
-                        target.captured(0);
-                        UnityEngine.Object.Destroy(target.gameObject);
+                        return false;
                     }
                     Team team = null;
                     if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.AltGr) || Input.GetKey(KeyCode.RightAlt))
@@ -367,19 +472,40 @@ namespace MyFirstPlugin
         }
     }
 
+    [HarmonyPatch(typeof(Plugin), "Update")]
+    public static class PieceRemoverMod
+    {
+        //
+        [HarmonyPrefix]
+        public static void PostFix(Plugin __instance)
+        {
+            if (UnityInput.Current.GetKeyDown(KeyCode.Delete) && PlayerInput.Instance != null
+            && PlayerInput.Instance.board_instance != null && PlayerInput.Instance.board_instance.selectedPiece != null)
+            {
+                Piece p = PlayerInput.Instance.board_instance.selectedPiece;
+                p.captured(0);
+            }
+
+        }
+    }
+
     [HarmonyPatch(typeof(PieceAction), "execute")]
     public static class WolfSwapJump
     {
+
         [HarmonyPostfix]
         public static void Postfix(PieceAction __instance)
         {
-            Piece piece = __instance.piece_hook;
-            Piece boardPiece = piece.board.onSquare(__instance.newPosition);
-            if (Piece.CheckFriendlyCaptureDoubleTurn(piece, boardPiece))
+            if ((UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift)) 
+            && !Plugin.Instance.adventureModeActive && !Plugin.Instance.multiplayerActive)
             {
-                //Plugin.Instance.LogThisInfo("Wolf jump patch if statment called.");
-                boardPiece = piece.team.newPiece(boardPiece.gameObject, new BoardSquare[] { __instance.oldPosition });
-                boardPiece.DoTransition(__instance.newPosition, __instance.oldPosition, false, 0.2f);
+                Piece piece = __instance.piece_hook;
+                Piece boardPiece = piece.board.onSquare(__instance.newPosition);
+                if (Piece.CheckFriendlyCaptureDoubleTurn(piece, boardPiece))
+                {
+                    boardPiece = piece.team.newPiece(boardPiece.gameObject, new BoardSquare[] { __instance.oldPosition });
+                    boardPiece.DoTransition(__instance.newPosition, __instance.oldPosition, false, 0.2f);
+                }
             }
         }
     }
@@ -426,10 +552,102 @@ namespace MyFirstPlugin
             if (target != null && !target.Invincible && !__instance.TargetIsShielded(target) && !__instance.patterns[pid].cantTarget &&
             target.team == __instance.team && !__instance.PieceType.IsPawn() && target.PieceType.IsPawn())
             {
+                
                 __result = true;
                 return false;
             }
             return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(PieceAction), "execute")]
+    public static class AllFactionsCanCaptureOwnPawns_MovePatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(PieceAction __instance, [HarmonyArgument(0)] int index, [HarmonyArgument(1)] ModChessGame game, ref bool __result)
+        {
+            Piece piece = __instance.piece_hook;
+            Piece boardPiece = piece.board.onSquare(__instance.newPosition);
+            if (piece != null && boardPiece != null && piece.team == boardPiece.team && piece.PieceType != PieceTypeEnum.Pawn 
+            && __instance.skill == PieceAction.PieceSkill.None && boardPiece.PieceType == PieceTypeEnum.Pawn)
+            {
+                __result = true;
+                boardPiece.captured(piece.GUPID);
+                piece.Position = __instance.newPosition;
+                piece.HasMoved = true;
+                if (piece.pieceRace == Race.Tikis && (piece.PieceType == PieceTypeEnum.Knight || piece.PieceType == PieceTypeEnum.Knight_alt))
+                {
+                    piece.PieceType = ((piece.PieceType == PieceTypeEnum.Knight) ? PieceTypeEnum.Knight_alt : PieceTypeEnum.Knight);
+                    piece.TikiMorph(piece.PieceType);
+                }
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(Board), "updateMoves")]
+    public static class AllFactionsHaveUnlimitedRange
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Board __instance)
+        {
+            foreach (Team team in __instance.Teams)
+            {
+
+                foreach (Piece p in team.pieces.Values)
+                {
+                    if (p == null) {continue;}
+                    PieceTypeEnum pieceType = p.PieceType;
+                    switch (pieceType)
+                    {
+                        case PieceTypeEnum.Rook:
+                        case PieceTypeEnum.Bishop:
+                        case PieceTypeEnum.Queen:
+                        case PieceTypeEnum.Chimp:
+                        case PieceTypeEnum.Mole:
+                        case PieceTypeEnum.Tower:
+                        case PieceTypeEnum.Scorpion:
+                        case PieceTypeEnum.Joy:
+                            foreach (patternClass patternClass in p.patterns)
+                            {
+                                patternClass.moveDist += 3;
+                            }
+                            break;
+                    }
+                }
+            }
+            return true;
+        }
+
+        [HarmonyPostfix]
+        public static void PostFix(Board __instance)
+        {
+            foreach (Team team in __instance.Teams)
+            {
+
+                foreach (Piece p in team.pieces.Values)
+                {
+                    if (p == null) {continue;}
+                    PieceTypeEnum pieceType = p.PieceType;
+                    switch (pieceType)
+                    {
+                        case PieceTypeEnum.Rook:
+                        case PieceTypeEnum.Bishop:
+                        case PieceTypeEnum.Queen:
+                        case PieceTypeEnum.Chimp:
+                        case PieceTypeEnum.Mole:
+                        case PieceTypeEnum.Tower:
+                        case PieceTypeEnum.Scorpion:
+                        case PieceTypeEnum.Joy:
+                            foreach (patternClass patternClass in p.patterns)
+                            {
+                                patternClass.moveDist -= 3;
+                            }
+                            break;
+                    }
+                }
+            }
         }
     }
 }
