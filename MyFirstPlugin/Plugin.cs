@@ -17,7 +17,7 @@ namespace MyFirstPlugin
         private Harmony fixesPatcher;
 
         private HashSet<ModType> patchesHashSet;
-        //public bool MultiplayerActive { get; private set; } = false;
+        public bool MultiplayerActive { get; private set; } = false;
         public bool AdventureModeActive { get; private set; } = false;
 
         private enum OpModType
@@ -72,8 +72,8 @@ namespace MyFirstPlugin
             this.PatchFixes();
             this.PatchOpMods();
             this.ActivateAllBalancedMods();
-            //SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
-            //SceneManager.sceneLoaded += this.onModsEnabledForSingleplayer;
+            SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
+            SceneManager.sceneLoaded += this.onModsEnabledForSingleplayer;
             SceneManager.sceneLoaded += this.onModsDisabledForAdventureMode;
             SceneManager.sceneLoaded += this.onModsEnabledForNonAdventure;
             SceneManager.sceneLoaded += this.onSceneLoaded;
@@ -161,11 +161,11 @@ namespace MyFirstPlugin
 
         private void TryPatch(ModType mod)
         {
-            // if (MultiplayerActive)
-            // {
-            //     Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
-            //     return;
-            // }
+            if (MultiplayerActive)
+            {
+                Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
+                return;
+            }
             if (patchesHashSet.Contains(mod))
             {
                 LogThisInfo($"{mod.ToString()} mod is already active");
@@ -179,11 +179,11 @@ namespace MyFirstPlugin
 
         private void TryUnpatch(ModType mod)
         {
-            // if (MultiplayerActive)
-            // {
-            //     Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
-            //     return;
-            // }
+            if (MultiplayerActive)
+            {
+                Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
+                return;
+            }
             if (!patchesHashSet.Contains(mod))
             {
                 LogThisInfo($"{mod.ToString()} mod is already disabled");
@@ -195,33 +195,33 @@ namespace MyFirstPlugin
             LogBalancedModInfo();
         }
 
-        // private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
-        // {
-        //     if (SceneManager.GetActiveScene().name == "10(Multiplayer)" && !this.MultiplayerActive)
-        //     {
-        //         Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
-        //         this.UnpatchFixes();
-        //         this.DeactivateAllBalancedMods();
-        //         this.UnpatchOpMods();
-        //         this.MultiplayerActive = true;
-        //     }
-        // }
+        private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
+        {
+            if (SceneManager.GetActiveScene().name == "10(Multiplayer)" && !this.MultiplayerActive)
+            {
+                Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
+                this.UnpatchFixes();
+                this.DeactivateAllBalancedMods();
+                this.UnpatchOpMods();
+                this.MultiplayerActive = true;
+            }
+        }
 
-        // private void onModsEnabledForSingleplayer(Scene scene, LoadSceneMode sceneMode)
-        // {
-        //     //Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
-        //     if (SceneManager.GetSceneByName("1(main)").isLoaded && this.MultiplayerActive)
-        //     {
-        //         Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
-        //         this.PatchFixes();
-        //         this.PatchOpMods();
-        //         foreach (ModType item in this.patchesHashSet)
-        //         {
-        //             this.PatchThisBalancedMod(item);
-        //         }
-        //         this.MultiplayerActive = false;
-        //     }
-        // }
+        private void onModsEnabledForSingleplayer(Scene scene, LoadSceneMode sceneMode)
+        {
+            //Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
+            if (SceneManager.GetSceneByName("1(main)").isLoaded && this.MultiplayerActive)
+            {
+                Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
+                this.PatchFixes();
+                this.PatchOpMods();
+                foreach (ModType item in this.patchesHashSet)
+                {
+                    this.PatchThisBalancedMod(item);
+                }
+                this.MultiplayerActive = false;
+            }
+        }
 
         private void onModsDisabledForAdventureMode(Scene scene, LoadSceneMode sceneMode)
         {
@@ -720,10 +720,10 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(Piece), "OnMouseDown")]
+    
     public static class BoardEditorMod_PiecePatch
     {
-        //
+        [HarmonyPatch(typeof(Piece), nameof(Piece.OnMouseDown))]
         [HarmonyPrefix]
         public static bool Prefix(Piece __instance)
         {
@@ -736,7 +736,7 @@ namespace MyFirstPlugin
                 if (s.isValid && __instance.board.selectedPiece != null)
                 {
                     Piece sp = __instance.board.selectedPiece;
-                    __instance.captured(0);
+                    __instance.captured(0, false);
                     Team team = null;
                     if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.AltGr) || Input.GetKey(KeyCode.RightAlt))
                     {
@@ -758,26 +758,26 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(Plugin), "UpdateHook")]
+    
     public static class PieceRemoverMod
     {
-        //
+        [HarmonyPatch(typeof(Plugin), nameof(Plugin.UpdateHook))]
         [HarmonyPrefix]
         public static void PostFix(Plugin __instance)
         {
             if (UnityInput.Current.GetKeyDown(KeyCode.Delete) && PlayerInput.Instance.board_instance.selectedPiece != null)
             {
                 Piece p = PlayerInput.Instance.board_instance.selectedPiece;
-                p.captured(0);
+                p.captured(0, true);
             }
 
         }
     }
 
-    [HarmonyPatch(typeof(PieceAction), "execute")]
+    
     public static class WolfSwapJump
     {
-
+        [HarmonyPatch(typeof(PieceAction), nameof(PieceAction.execute))]
         [HarmonyPostfix]
         public static void Postfix(PieceAction __instance)
         {
@@ -795,9 +795,10 @@ namespace MyFirstPlugin
     }
 
     
-    [HarmonyPatch(typeof(Piece), "HandleCapturerPieceLogic")]
+    
     public static class WolfMultiJump
     {
+        [HarmonyPatch(typeof(Piece), "HandleCapturerPieceLogic")]
         [HarmonyPostfix]
         public static void Postfix(Piece __instance, [HarmonyArgument(0)] Piece capturerPiece)
         {
@@ -805,9 +806,10 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(UpgradeSelect), nameof(UpgradeSelect.Open))]
+    
     public static class AllFactionsCanDoQueenPromotion
     {
+        [HarmonyPatch(typeof(UpgradeSelect), nameof(UpgradeSelect.Open))]
         [HarmonyPostfix]
         public static void Postfix(UpgradeSelect __instance, [HarmonyArgument(0)] Piece p)
         {
@@ -835,8 +837,8 @@ namespace MyFirstPlugin
         [HarmonyPrefix]
         public static bool Prefix(Piece __instance, [HarmonyArgument(0)] int pid, [HarmonyArgument(1)] Piece target, ref bool __result)
         {
-            if (target != null && !target.Invincible && !__instance.TargetIsShielded(target) && !__instance.patterns[pid].cantTarget &&
-            target.team == __instance.team && !__instance.PieceType.IsPawn() && target.PieceType.IsPawn())
+            if (target != null && !target.Invincible && !__instance.patterns[pid].allBoardMove && !__instance.patterns[pid].cantTarget &&
+            target.team == __instance.team && !__instance.PieceType.IsPawn() && target.PieceType.IsPawn() && !__instance.patterns[pid].switchPosition)
             {
 
                 __result = true;
@@ -853,11 +855,11 @@ namespace MyFirstPlugin
             Piece boardPiece = piece.board.onSquare(__instance.newPosition);
 
             if (piece != null && boardPiece != null && piece.team == boardPiece.team && piece.PieceType != PieceTypeEnum.Pawn
-            && __instance.skill == PieceAction.PieceSkill.None && boardPiece.PieceType == PieceTypeEnum.Pawn && piece.PieceType != PieceTypeEnum.Bishop)
+            && __instance.skill == PieceAction.PieceSkill.None && boardPiece.PieceType == PieceTypeEnum.Pawn)
             {
                 __result = true;
                 //Plugin.Instance.LogThisInfo("Pieces hide in pawn instead of caputring it!");
-                boardPiece.captured(piece.GUPID);
+                boardPiece.captured(piece.GUPID, false);
                 piece.Position = __instance.newPosition;
                 piece.HasMoved = true;
                 if (piece.pieceRace == Race.Tikis && (piece.PieceType == PieceTypeEnum.Knight || piece.PieceType == PieceTypeEnum.Knight_alt))
@@ -1068,7 +1070,7 @@ namespace MyFirstPlugin
             if (pc != null && pieceTypes != null)
             {
                 UpdateTargetWhitelist(ref pc, p, pieceTypes);
-                if (p.patterns[p.patterns.Length] != pc)
+                if (p.patterns[p.patterns.Length - 1] != pc)
                 {
                     System.Array.Resize<patternClass>(ref p.patterns, p.patterns.Length + 1);
                     p.patterns[p.patterns.Length - 1] = pc;
