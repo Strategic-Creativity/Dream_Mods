@@ -12,11 +12,13 @@ namespace MyFirstPlugin
     public class Plugin : BaseUnityPlugin
     {
         public static Plugin Instance { get; private set; }
-        private Harmony harmony;
+        private Harmony[] balancedPatchers;
+        private Harmony[] opPatchers;
+        private Harmony fixesPatcher;
 
         private HashSet<ModType> patchesHashSet;
-        public bool multiplayerActive {get; private set;} = false;
-        public bool adventureModeActive{get; private set;} = false;
+        //public bool MultiplayerActive { get; private set; } = false;
+        public bool AdventureModeActive { get; private set; } = false;
 
         private enum OpModType
         {
@@ -29,7 +31,8 @@ namespace MyFirstPlugin
             WolfMultiJump,
             AllFactionsCanDoQueenPromotion,
             AllFactionsCanCaptureOwnPawns,
-            AllFactionsHaveUnlimitedRange
+            AllFactionsHaveUnlimitedRange,
+            AllFactionsHaveOldMermaidSwaps
         }
 
         /*this.scenes[1].name = "1(main)";
@@ -50,61 +53,104 @@ namespace MyFirstPlugin
         {
             // Plugin startup logic
             Logger.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is loaded! \n Note : This is only tested on demo version.(May not work on other versions)");
-            this.harmony = new Harmony("QualityOfLifeMadChessMods");
+            string[] balancedModsNames = System.Enum.GetNames(typeof(ModType));
+            this.balancedPatchers = new Harmony[balancedModsNames.Length];
+            for (int i = 0; i < this.balancedPatchers.Length; i++)
+            {
+                this.balancedPatchers[i] = new Harmony(balancedModsNames[i]);
+            }
+            string[] opModsNames = System.Enum.GetNames(typeof(OpModType));
+            this.opPatchers = new Harmony[opModsNames.Length];
+            for (int i = 0; i < this.opPatchers.Length; i++)
+            {
+                this.opPatchers[i] = new Harmony(opModsNames[i]);
+            }
             Plugin.Instance = this;
+            this.fixesPatcher = new Harmony("fixesPatcher");
             this.patchesHashSet = new HashSet<ModType>();
             Logger.LogInfo("Press 'TAB' inside game for mods info and hotkeys.\n Note : Key input only works in-game.\n Note : Press 'Shift + (hotkey)' to deativate mods.");
             this.PatchFixes();
             this.PatchOpMods();
             this.ActivateAllBalancedMods();
-            SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
-            SceneManager.sceneLoaded += this.onModsEnabledForSingleplayer;
+            //SceneManager.sceneLoaded += this.onModsDisabledForMultiplayer;
+            //SceneManager.sceneLoaded += this.onModsEnabledForSingleplayer;
             SceneManager.sceneLoaded += this.onModsDisabledForAdventureMode;
             SceneManager.sceneLoaded += this.onModsEnabledForNonAdventure;
+            SceneManager.sceneLoaded += this.onSceneLoaded;
+            SceneManager.sceneUnloaded += this.onSceneUnloaded;
         }
 
+        private void Start()
+        {
+            
+        }
+
+        public void UpdateHook() { }
         private void Update()
         {
-
+            this.UpdateHook();
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadPlus))
+            {
+                LogPatternClassInfo();
+            }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.Tab))
             {
                 LogOpModInfo();
                 LogBalancedModInfo();
             }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
-            {
-                this.TryPatch(ModType.WolfMultiJump);
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
-            {
-                this.TryPatch(ModType.AllFactionsCanDoQueenPromotion);
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
-            {
-                this.TryPatch(ModType.AllFactionsCanCaptureOwnPawns);
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
-            {
-                this.TryPatch(ModType.AllFactionsHaveUnlimitedRange);
-            }
+
             if (UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift))
             {
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
                 {
                     this.TryUnpatch(ModType.WolfMultiJump);
+                    return;
                 }
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
                 {
                     this.TryUnpatch(ModType.AllFactionsCanDoQueenPromotion);
+                    return;
                 }
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
                 {
                     this.TryUnpatch(ModType.AllFactionsCanCaptureOwnPawns);
+                    return;
                 }
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
                 {
                     this.TryUnpatch(ModType.AllFactionsHaveUnlimitedRange);
+                    return;
                 }
+                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
+                {
+                    this.TryUnpatch(ModType.AllFactionsHaveOldMermaidSwaps);
+                    return;
+                }
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
+            {
+                this.TryPatch(ModType.WolfMultiJump);
+                return;
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
+            {
+                this.TryPatch(ModType.AllFactionsCanDoQueenPromotion);
+                return;
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
+            {
+                this.TryPatch(ModType.AllFactionsCanCaptureOwnPawns);
+                return;
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
+            {
+                this.TryPatch(ModType.AllFactionsHaveUnlimitedRange);
+                return;
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
+            {
+                this.TryPatch(ModType.AllFactionsHaveOldMermaidSwaps);
+                return;
             }
         }
 
@@ -115,11 +161,11 @@ namespace MyFirstPlugin
 
         private void TryPatch(ModType mod)
         {
-            if (multiplayerActive)
-            {
-                Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
-                return;
-            }
+            // if (MultiplayerActive)
+            // {
+            //     Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
+            //     return;
+            // }
             if (patchesHashSet.Contains(mod))
             {
                 LogThisInfo($"{mod.ToString()} mod is already active");
@@ -133,11 +179,11 @@ namespace MyFirstPlugin
 
         private void TryUnpatch(ModType mod)
         {
-            if (multiplayerActive)
-            {
-                Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
-                return;
-            }
+            // if (MultiplayerActive)
+            // {
+            //     Logger.LogWarning("You cannot enable/disable mods in multiplayer!");
+            //     return;
+            // }
             if (!patchesHashSet.Contains(mod))
             {
                 LogThisInfo($"{mod.ToString()} mod is already disabled");
@@ -149,73 +195,89 @@ namespace MyFirstPlugin
             LogBalancedModInfo();
         }
 
-        private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
-        {
-            if (SceneManager.GetActiveScene().name == "10(Multiplayer)" && !this.multiplayerActive)
-            {
-                Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
-                this.harmony.UnpatchSelf();
-                this.multiplayerActive = true;
-            }
-        }
+        // private void onModsDisabledForMultiplayer(Scene scene, LoadSceneMode sceneMode)
+        // {
+        //     if (SceneManager.GetActiveScene().name == "10(Multiplayer)" && !this.MultiplayerActive)
+        //     {
+        //         Logger.LogWarning("!!! Mods have been disbled for multiplayer. !!!");
+        //         this.UnpatchFixes();
+        //         this.DeactivateAllBalancedMods();
+        //         this.UnpatchOpMods();
+        //         this.MultiplayerActive = true;
+        //     }
+        // }
 
-        private void onModsEnabledForSingleplayer(Scene scene, LoadSceneMode sceneMode)
-        {
-            //Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
-            if (SceneManager.GetActiveScene().name == "1(main)" && this.multiplayerActive)
-            {
-                Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
-                this.PatchFixes();
-                this.PatchOpMods();
-                foreach (ModType item in this.patchesHashSet)
-                {
-                    this.PatchThisBalancedMod(item);
-                }
-                this.multiplayerActive = false;
-            }
-        }
+        // private void onModsEnabledForSingleplayer(Scene scene, LoadSceneMode sceneMode)
+        // {
+        //     //Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
+        //     if (SceneManager.GetSceneByName("1(main)").isLoaded && this.MultiplayerActive)
+        //     {
+        //         Logger.LogWarning("!!! Mods have been re-enabled for singleplayer. !!!");
+        //         this.PatchFixes();
+        //         this.PatchOpMods();
+        //         foreach (ModType item in this.patchesHashSet)
+        //         {
+        //             this.PatchThisBalancedMod(item);
+        //         }
+        //         this.MultiplayerActive = false;
+        //     }
+        // }
 
         private void onModsDisabledForAdventureMode(Scene scene, LoadSceneMode sceneMode)
         {
-            Logger.LogInfo("Scene loaded : " + SceneManager.GetActiveScene().name);
-            if (SceneManager.GetActiveScene().name == "16(Story)" && !this.adventureModeActive)
+            if (SceneManager.GetActiveScene().name == "16(Story)" && !this.AdventureModeActive)
             {
                 Logger.LogWarning("!!! OP Mods have been disbled for adventure mode. !!!");
                 this.UnpatchOpMods();
-                this.adventureModeActive = true;
+                this.AdventureModeActive = true;
             }
         }
 
         private void onModsEnabledForNonAdventure(Scene scene, LoadSceneMode sceneMode)
         {
-            if (SceneManager.GetSceneByName("1(main)").isLoaded && this.adventureModeActive)
+            if (SceneManager.GetSceneByName("1(main)").isLoaded && this.AdventureModeActive)
             {
                 Logger.LogWarning("!!! OP Mods have been re-enabled for versus mode. !!!");
                 this.PatchOpMods();
-                this.adventureModeActive = false;
+                this.AdventureModeActive = false;
             }
+        }
+
+        private void onSceneLoaded(Scene scene, LoadSceneMode sceneMode)
+        {
+            //if(scene.name == "7(Game)" || scene.name == "17(StoryGame)") { AllFactionsHaveOldMermaidSwaps.initialized = false;}
+        }
+
+        private void onSceneUnloaded(Scene scene)
+        {
+            //if(scene.name == "7(Game)" || scene.name == "17(StoryGame)") { AllFactionsHaveOldMermaidSwaps.initialized = false;}
         }
 
         private void PatchFixes()
         {
-            this.harmony.PatchAll(typeof(ShieldBugFix));
+            this.fixesPatcher.PatchAll(typeof(ShieldBugFix));
+        }
+
+        private void UnpatchFixes()
+        {
+            this.fixesPatcher.UnpatchSelf();
         }
 
         private void PatchOpMods()
         {
 
-            this.harmony.PatchAll(typeof(BoardEditorMod));
-            this.harmony.PatchAll(typeof(PieceRemoverMod));
-            this.harmony.PatchAll(typeof(WolfSwapJump));
-
+            this.opPatchers[(int)OpModType.BoardEditorMod].PatchAll(typeof(BoardEditorMod));
+            this.opPatchers[(int)OpModType.PieceRemoverMod].PatchAll(typeof(PieceRemoverMod));
+            this.opPatchers[(int)OpModType.WolfSwapJump].PatchAll(typeof(WolfSwapJump));
+            
         }
 
         private void UnpatchOpMods()
         {
 
-            this.harmony.Unpatch(typeof(Board).GetMethod("OnMouseDown"), HarmonyPatchType.All);
-            this.harmony.Unpatch(typeof(Board).GetMethod("advance"), HarmonyPatchType.All);
-            this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.Postfix);
+            this.opPatchers[(int)OpModType.BoardEditorMod].UnpatchSelf();
+            this.opPatchers[(int)OpModType.PieceRemoverMod].UnpatchSelf();
+            this.opPatchers[(int)OpModType.WolfSwapJump].UnpatchSelf();
 
         }
 
@@ -224,9 +286,24 @@ namespace MyFirstPlugin
             foreach (string mod in System.Enum.GetNames(typeof(ModType)))
             {
                 ModType modType = (ModType)System.Enum.Parse(typeof(ModType), mod);
-                this.PatchThisBalancedMod(modType);
-                patchesHashSet.Add(modType);
+                if (!patchesHashSet.Contains(modType))
+                {
+                    this.PatchThisBalancedMod(modType);
+                    patchesHashSet.Add(modType);
+                }
+            }
+        }
 
+        private void DeactivateAllBalancedMods()
+        {
+            foreach (string mod in System.Enum.GetNames(typeof(ModType)))
+            {
+                ModType modType = (ModType)System.Enum.Parse(typeof(ModType), mod);
+                if (patchesHashSet.Contains(modType))
+                {
+                    this.UnpatchThisBalancedMod(modType);
+                    patchesHashSet.Remove(modType);
+                }
             }
         }
 
@@ -235,17 +312,19 @@ namespace MyFirstPlugin
             switch (modType)
             {
                 case ModType.WolfMultiJump:
-                    this.harmony.PatchAll(typeof(WolfMultiJump));
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(WolfMultiJump));
                     break;
                 case ModType.AllFactionsCanDoQueenPromotion:
-                    this.harmony.PatchAll(typeof(AllFactionsCanDoQueenPromotion));
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsCanDoQueenPromotion));
                     break;
                 case ModType.AllFactionsCanCaptureOwnPawns:
-                    this.harmony.PatchAll(typeof(AllFactionsCanCaptureOwnPawns));
-                    this.harmony.PatchAll(typeof(AllFactionsCanCaptureOwnPawns_MovePatch));
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsCanCaptureOwnPawns));
                     break;
                 case ModType.AllFactionsHaveUnlimitedRange:
-                    this.harmony.PatchAll(typeof(AllFactionsHaveUnlimitedRange));
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsHaveUnlimitedRange));
+                    break;
+                case ModType.AllFactionsHaveOldMermaidSwaps:
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsHaveOldMermaidSwaps));
                     break;
                 default:
                     Logger.LogError($"{modType.ToString()} mod is currently not supported");
@@ -258,17 +337,19 @@ namespace MyFirstPlugin
             switch (modType)
             {
                 case ModType.WolfMultiJump:
-                    this.harmony.Unpatch(typeof(Piece).GetMethod("HandleCapturerPieceLogic"), HarmonyPatchType.All);
+                    this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
                 case ModType.AllFactionsCanDoQueenPromotion:
-                    this.harmony.Unpatch(typeof(UpgradeSelect).GetMethod("Open"), HarmonyPatchType.All);
+                    this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
                 case ModType.AllFactionsCanCaptureOwnPawns:
-                    this.harmony.Unpatch(typeof(Piece).GetMethod("validateTarget"), HarmonyPatchType.All);
-                    this.harmony.Unpatch(typeof(PieceAction).GetMethod("execute"), HarmonyPatchType.Prefix);
+                    this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
                 case ModType.AllFactionsHaveUnlimitedRange:
-                    this.harmony.Unpatch(typeof(Piece).GetMethod("findValidMoveList"), HarmonyPatchType.All);
+                    this.balancedPatchers[(int)modType].UnpatchSelf();
+                    break;
+                case ModType.AllFactionsHaveOldMermaidSwaps:
+                    this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
                 default:
                     Logger.LogError($"{modType.ToString()} mod is currently not supported");
@@ -293,7 +374,7 @@ namespace MyFirstPlugin
 
         private void LogOpModInfo()
         {
-            if (this.adventureModeActive)
+            if (this.AdventureModeActive)
             {
                 Logger.LogWarning("OP Mods are disbled for adventure mode!");
                 return;
@@ -319,8 +400,211 @@ namespace MyFirstPlugin
                 case OpModType.WolfSwapJump:
                     return "Hold 'Shift' key while using 'blood jump' ability of wolf \n\t to swap places with pawn instead of capturing it.";
                 default:
-                    return "This mod is currently work in progress";
+                    return "This mod is currently work in progress !!!";
             }
+        }
+
+        private void LogPatternClassInfo()
+        {
+            Board b = PlayerInput.Instance.board_instance;
+
+            FieldInfo[] fieldInfos = typeof(patternClass).GetFields();
+            FieldInfo[] pieceFieldInfos = typeof(Piece).GetFields();
+            Piece p = b.GetPieces(PieceTypeEnum.Rook, b.activeTeam.color)[0];
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            patternClass[] pcArray = p.patterns;
+            sb.AppendLine("================= Rook Pattern Class ===============");
+            foreach (FieldInfo item in pieceFieldInfos)
+            {
+
+                if (item.FieldType == typeof(bool))
+                {
+                    if ((bool)item.GetValue(p) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                }
+                else if (item.FieldType == typeof(int))
+                {
+                    sb.AppendLine($"{item.Name}(int) : {item.GetValue(p)}");
+                }
+            }
+            for (int i = 0; i < pcArray.Length; i++)
+            {
+                patternClass pattern = pcArray[i];
+                sb.AppendLine($"-------------- Pattern Class Index : {i} ---------------");
+                foreach (FieldInfo item in fieldInfos)
+                {
+
+                    if (item.FieldType == typeof(bool))
+                    {
+                        if ((bool)item.GetValue(pattern) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                    }
+                    else if (item.FieldType == typeof(System.String[]))
+                    {
+                        sb.AppendLine($"{item.Name}(string[]) :- ");
+                        foreach (string arrayItem in (string[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(BoardSquare[]))
+                    {
+                        sb.AppendLine($"{item.Name}(BoardSquare[]) :- ");
+                        foreach (BoardSquare arrayItem in (BoardSquare[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem.ToString()}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(int))
+                    {
+                        sb.AppendLine($"{item.Name}(int) : {item.GetValue(pattern)}");
+                    }
+                }
+            }
+            p = b.GetPieces(PieceTypeEnum.Bishop, b.activeTeam.color)[0];
+            pcArray = p.patterns;
+            sb.AppendLine("================= Bishop Pattern Class ===============");
+            foreach (FieldInfo item in pieceFieldInfos)
+            {
+
+                if (item.FieldType == typeof(bool))
+                {
+                    if ((bool)item.GetValue(p) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                }
+                else if (item.FieldType == typeof(int))
+                {
+                    sb.AppendLine($"{item.Name}(int) : {item.GetValue(p)}");
+                }
+            }
+            for (int i = 0; i < pcArray.Length; i++)
+            {
+                patternClass pattern = pcArray[i];
+                sb.AppendLine($"-------------- Pattern Class Index : {i} ---------------");
+                foreach (FieldInfo item in fieldInfos)
+                {
+
+                    if (item.FieldType == typeof(bool))
+                    {
+                        if ((bool)item.GetValue(pattern) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                    }
+                    else if (item.FieldType == typeof(System.String[]))
+                    {
+                        sb.AppendLine($"{item.Name}(string[]) :- ");
+                        foreach (string arrayItem in (string[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(BoardSquare[]))
+                    {
+                        sb.AppendLine($"{item.Name}(BoardSquare[]) :- ");
+                        foreach (BoardSquare arrayItem in (BoardSquare[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem.ToString()}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(int))
+                    {
+                        sb.AppendLine($"{item.Name}(int) : {item.GetValue(pattern)}");
+                    }
+                }
+            }
+            p = b.GetPieces(PieceTypeEnum.Knight, b.activeTeam.color)[0];
+            pcArray = p.patterns;
+            sb.AppendLine("================= Knight Pattern Class ===============");
+            foreach (FieldInfo item in pieceFieldInfos)
+            {
+
+                if (item.FieldType == typeof(bool))
+                {
+                    if ((bool)item.GetValue(p) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                }
+                else if (item.FieldType == typeof(int))
+                {
+                    sb.AppendLine($"{item.Name}(int) : {item.GetValue(p)}");
+                }
+            }
+            for (int i = 0; i < pcArray.Length; i++)
+            {
+                patternClass pattern = pcArray[i];
+                sb.AppendLine($"-------------- Pattern Class Index : {i} ---------------");
+                foreach (FieldInfo item in fieldInfos)
+                {
+
+                    if (item.FieldType == typeof(bool))
+                    {
+                        if ((bool)item.GetValue(pattern) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                    }
+                    else if (item.FieldType == typeof(System.String[]))
+                    {
+                        sb.AppendLine($"{item.Name}(string[]) :- ");
+                        foreach (string arrayItem in (string[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(BoardSquare[]))
+                    {
+                        sb.AppendLine($"{item.Name}(BoardSquare[]) :- ");
+                        foreach (BoardSquare arrayItem in (BoardSquare[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem.ToString()}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(int))
+                    {
+                        sb.AppendLine($"{item.Name}(int) : {item.GetValue(pattern)}");
+                    }
+                }
+            }
+            p = b.GetPieces(PieceTypeEnum.Queen, b.activeTeam.color)[0];
+            pcArray = p.patterns;
+            sb.AppendLine("================= Queen Pattern Class ===============");
+            foreach (FieldInfo item in pieceFieldInfos)
+            {
+
+                if (item.FieldType == typeof(bool))
+                {
+                    if ((bool)item.GetValue(p) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                }
+                else if (item.FieldType == typeof(int))
+                {
+                    sb.AppendLine($"{item.Name}(int) : {item.GetValue(p)}");
+                }
+            }
+            for (int i = 0; i < pcArray.Length; i++)
+            {
+                patternClass pattern = pcArray[i];
+                sb.AppendLine($"-------------- Pattern Class Index : {i} ---------------");
+                foreach (FieldInfo item in fieldInfos)
+                {
+
+                    if (item.FieldType == typeof(bool))
+                    {
+                        if ((bool)item.GetValue(pattern) == true) { sb.AppendLine($"{item.Name}(bool) : True"); }
+                    }
+                    else if (item.FieldType == typeof(System.String[]))
+                    {
+                        sb.AppendLine($"{item.Name}(string[]) :- ");
+                        foreach (string arrayItem in (string[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(BoardSquare[]))
+                    {
+                        sb.AppendLine($"{item.Name}(BoardSquare[]) :- ");
+                        foreach (BoardSquare arrayItem in (BoardSquare[])item.GetValue(pattern))
+                        {
+                            sb.AppendLine($"\t {arrayItem.ToString()}");
+                        }
+                    }
+                    else if (item.FieldType == typeof(int))
+                    {
+                        sb.AppendLine($"{item.Name}(int) : {item.GetValue(pattern)}");
+                    }
+                }
+            }
+
+            Logger.LogInfo(sb);
         }
     }
 
@@ -357,7 +641,7 @@ namespace MyFirstPlugin
                 if (piece.isCaptured || !piece.inPlay)
                 {
 
-                    break;
+                    continue;
                 }
                 List<Piece> list = new List<Piece>();
                 if (piece.backShield)
@@ -368,10 +652,12 @@ namespace MyFirstPlugin
                 {
                     list.Add(__instance.game.GetPiece(__instance.board.PiecePositionList[(int)((sbyte)(piece.Position.x - 1)), piece.Position.y]));
                     list.Add(__instance.game.GetPiece(__instance.board.PiecePositionList[(int)((sbyte)(piece.Position.x + 1)), piece.Position.y]));
+                    list.Add(__instance.game.GetPiece(__instance.board.PiecePositionList[piece.Position.x, (int)((sbyte)(piece.Position.y - 1))]));
+                    list.Add(__instance.game.GetPiece(__instance.board.PiecePositionList[piece.Position.x, (int)((sbyte)(piece.Position.y + 1))]));
                 }
                 if (list.Count < 1)
                 {
-                    break;
+                    continue;
                 }
                 using (List<Piece>.Enumerator enumerator = list.GetEnumerator())
                 {
@@ -400,7 +686,7 @@ namespace MyFirstPlugin
 
             if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
             {
-                if (PlayerInput.Instance !=  null && PlayerInput.Instance.upgradeselect_hook.is_enabled)
+                if (PlayerInput.Instance != null && PlayerInput.Instance.upgradeselect_hook.is_enabled)
                 {
                     return false;
                 }
@@ -472,15 +758,14 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(Plugin), "Update")]
+    [HarmonyPatch(typeof(Plugin), "UpdateHook")]
     public static class PieceRemoverMod
     {
         //
         [HarmonyPrefix]
         public static void PostFix(Plugin __instance)
         {
-            if (UnityInput.Current.GetKeyDown(KeyCode.Delete) && PlayerInput.Instance != null
-            && PlayerInput.Instance.board_instance != null && PlayerInput.Instance.board_instance.selectedPiece != null)
+            if (UnityInput.Current.GetKeyDown(KeyCode.Delete) && PlayerInput.Instance.board_instance.selectedPiece != null)
             {
                 Piece p = PlayerInput.Instance.board_instance.selectedPiece;
                 p.captured(0);
@@ -496,8 +781,7 @@ namespace MyFirstPlugin
         [HarmonyPostfix]
         public static void Postfix(PieceAction __instance)
         {
-            if ((UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift)) 
-            && !Plugin.Instance.adventureModeActive && !Plugin.Instance.multiplayerActive)
+            if (UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift))
             {
                 Piece piece = __instance.piece_hook;
                 Piece boardPiece = piece.board.onSquare(__instance.newPosition);
@@ -510,6 +794,7 @@ namespace MyFirstPlugin
         }
     }
 
+    
     [HarmonyPatch(typeof(Piece), "HandleCapturerPieceLogic")]
     public static class WolfMultiJump
     {
@@ -520,7 +805,7 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(UpgradeSelect), "Open")]
+    [HarmonyPatch(typeof(UpgradeSelect), nameof(UpgradeSelect.Open))]
     public static class AllFactionsCanDoQueenPromotion
     {
         [HarmonyPostfix]
@@ -543,35 +828,35 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(Piece), "validateTarget")]
+
     public static class AllFactionsCanCaptureOwnPawns
     {
+        [HarmonyPatch(typeof(Piece), nameof(Piece.validateTarget))]
         [HarmonyPrefix]
         public static bool Prefix(Piece __instance, [HarmonyArgument(0)] int pid, [HarmonyArgument(1)] Piece target, ref bool __result)
         {
             if (target != null && !target.Invincible && !__instance.TargetIsShielded(target) && !__instance.patterns[pid].cantTarget &&
             target.team == __instance.team && !__instance.PieceType.IsPawn() && target.PieceType.IsPawn())
             {
-                
+
                 __result = true;
                 return false;
             }
             return true;
         }
-    }
 
-    [HarmonyPatch(typeof(PieceAction), "execute")]
-    public static class AllFactionsCanCaptureOwnPawns_MovePatch
-    {
+        [HarmonyPatch(typeof(PieceAction), nameof(PieceAction.execute))]
         [HarmonyPrefix]
-        public static bool Prefix(PieceAction __instance, [HarmonyArgument(0)] int index, [HarmonyArgument(1)] ModChessGame game, ref bool __result)
+        public static bool Prefix_MovePatch(PieceAction __instance, [HarmonyArgument(0)] int index, [HarmonyArgument(1)] ModChessGame game, ref bool __result)
         {
             Piece piece = __instance.piece_hook;
             Piece boardPiece = piece.board.onSquare(__instance.newPosition);
-            if (piece != null && boardPiece != null && piece.team == boardPiece.team && piece.PieceType != PieceTypeEnum.Pawn 
-            && __instance.skill == PieceAction.PieceSkill.None && boardPiece.PieceType == PieceTypeEnum.Pawn)
+
+            if (piece != null && boardPiece != null && piece.team == boardPiece.team && piece.PieceType != PieceTypeEnum.Pawn
+            && __instance.skill == PieceAction.PieceSkill.None && boardPiece.PieceType == PieceTypeEnum.Pawn && piece.PieceType != PieceTypeEnum.Bishop)
             {
                 __result = true;
+                //Plugin.Instance.LogThisInfo("Pieces hide in pawn instead of caputring it!");
                 boardPiece.captured(piece.GUPID);
                 piece.Position = __instance.newPosition;
                 piece.HasMoved = true;
@@ -586,18 +871,17 @@ namespace MyFirstPlugin
         }
     }
 
-    [HarmonyPatch(typeof(Board), "updateMoves")]
+
     public static class AllFactionsHaveUnlimitedRange
     {
-        [HarmonyPrefix]
-        public static bool Prefix(Board __instance)
+        private static void EditPatternForUnlimitedRange(Board board, bool increase)
         {
-            foreach (Team team in __instance.Teams)
+            foreach (Team team in board.Teams)
             {
 
                 foreach (Piece p in team.pieces.Values)
                 {
-                    if (p == null) {continue;}
+                    if (p == null) { continue; }
                     PieceTypeEnum pieceType = p.PieceType;
                     switch (pieceType)
                     {
@@ -611,43 +895,285 @@ namespace MyFirstPlugin
                         case PieceTypeEnum.Joy:
                             foreach (patternClass patternClass in p.patterns)
                             {
-                                patternClass.moveDist += 3;
+                                if (patternClass.movement == null || patternClass.movement.Length == 0) { continue; }
+                                patternClass.moveDist += (increase) ? 6 : -6;
                             }
                             break;
                     }
                 }
+            }
+        }
+        [HarmonyPrepare]
+        public static void Initialize()
+        {
+            if (PlayerInput.Instance && PlayerInput.Instance.board_instance)
+            {
+                EditPatternForUnlimitedRange(PlayerInput.Instance.board_instance, true);
+            }
+        }
+
+        [HarmonyPatch(typeof(Board), nameof(Board.init))]
+        [HarmonyPostfix]
+        public static void PostFix(Board __instance)
+        {
+            EditPatternForUnlimitedRange(__instance, true);
+        }
+
+        [HarmonyCleanup]
+        public static void Unpatch_Cleanup()
+        {
+            if (PlayerInput.Instance && PlayerInput.Instance.board_instance)
+            {
+                EditPatternForUnlimitedRange(PlayerInput.Instance.board_instance, false);
+            }
+        }
+    }
+
+    public static class AllFactionsHaveOldMermaidSwaps
+    {
+        public static bool initialized = false;
+        private static patternClass whiteRookSwapsPC = new patternClass()
+        {
+            allBoardMove = true,
+            mustTarget = true,
+            targetsAllies = true,
+            doesNotTargetEnemies = true,
+            switchPosition = true,
+            enabled = true,
+            moveDist = 4,
+            targetWhitelist = new string[] { "King" },
+            targetBlacklist = new string[] { },
+            target = new BoardSquare[] { },
+            movement = new BoardSquare[] { },
+            required = new BoardSquare[] { }
+        };
+        private static patternClass blackRookSwapsPC = new patternClass()
+        {
+            allBoardMove = true,
+            mustTarget = true,
+            targetsAllies = true,
+            doesNotTargetEnemies = true,
+            switchPosition = true,
+            enabled = true,
+            moveDist = 4,
+            targetWhitelist = new string[] { "King" },
+            targetBlacklist = new string[] { },
+            target = new BoardSquare[] { },
+            movement = new BoardSquare[] { },
+            required = new BoardSquare[] { }
+        };
+        private static patternClass whiteBishopSwapsPC = new patternClass()
+        {
+            allBoardMove = true,
+            mustTarget = true,
+            targetsAllies = true,
+            doesNotTargetEnemies = true,
+            switchPosition = true,
+            enabled = true,
+            moveDist = 4,
+            targetWhitelist = new string[] { "Pawn" },
+            targetBlacklist = new string[] { },
+            target = new BoardSquare[] { },
+            movement = new BoardSquare[] { },
+            required = new BoardSquare[] { }
+        };
+        private static patternClass blackBishopSwapsPC = new patternClass()
+        {
+            allBoardMove = true,
+            mustTarget = true,
+            targetsAllies = true,
+            doesNotTargetEnemies = true,
+            switchPosition = true,
+            enabled = true,
+            moveDist = 4,
+            targetWhitelist = new string[] { "Pawn" },
+            targetBlacklist = new string[] { },
+            target = new BoardSquare[] { },
+            movement = new BoardSquare[] { },
+            required = new BoardSquare[] { }
+        };
+        private static patternClass whiteKnightSwapsPC = new patternClass()
+        {
+            allBoardMove = true,
+            mustTarget = true,
+            targetsAllies = true,
+            doesNotTargetEnemies = true,
+            switchPosition = true,
+            enabled = true,
+            moveDist = 4,
+            targetWhitelist = new string[] { "Queen" },
+            targetBlacklist = new string[] { },
+            target = new BoardSquare[] { },
+            movement = new BoardSquare[] { },
+            required = new BoardSquare[] { }
+        };
+        private static patternClass blackKnightSwapsPC = new patternClass()
+        {
+            allBoardMove = true,
+            mustTarget = true,
+            targetsAllies = true,
+            doesNotTargetEnemies = true,
+            switchPosition = true,
+            enabled = true,
+            moveDist = 4,
+            targetWhitelist = new string[] { "Queen" },
+            targetBlacklist = new string[] { },
+            target = new BoardSquare[] { },
+            movement = new BoardSquare[] { },
+            required = new BoardSquare[] { }
+        };
+
+        private static void UpdateTargetWhitelist(ref patternClass pc, Piece p, PieceTypeEnum[] pieceTypes)
+        {
+            if (pieceTypes.Length == 0) { return; }
+            List<string> pieceNames = new List<string>(1);
+            for (int i = 0; i < pieceTypes.Length; i++)
+            {
+                Piece[] pieces = p.board.GetPieces(pieceTypes[i], p.team.color);
+                if (pieces.Length != 0)
+                {
+                    pieceNames.Add(pieces[0].pieceName);
+                }
+            }
+            pc.targetWhitelist = pieceNames.ToArray();
+        }
+
+        private static void UpdatePatternForSwaps(Piece p)
+        {
+            PieceTypeEnum pieceType = p.PieceType;
+            patternClass pc = null;
+            PieceTypeEnum[] pieceTypes = null;
+            switch (pieceType)
+            {
+                case PieceTypeEnum.Knight:
+                case PieceTypeEnum.Knight_alt:
+                case PieceTypeEnum.Griffin:
+                    pc = (p.team.color == TeamColor.White) ? whiteKnightSwapsPC : blackKnightSwapsPC;
+                    pieceTypes = new PieceTypeEnum[] {PieceTypeEnum.Queen, PieceTypeEnum.Baron,
+                            PieceTypeEnum.Duke, PieceTypeEnum.Chimp, PieceTypeEnum.Mole};
+                    break;
+                case PieceTypeEnum.Bishop:
+                    pc = (p.team.color == TeamColor.White) ? whiteBishopSwapsPC : blackBishopSwapsPC;
+                    pieceTypes = new PieceTypeEnum[] { PieceTypeEnum.Pawn, PieceTypeEnum.SkeletonSummon };
+                    break;
+                case PieceTypeEnum.Rook:
+                case PieceTypeEnum.Joy:
+                case PieceTypeEnum.Rage:
+                    pc = (p.team.color == TeamColor.White) ? whiteRookSwapsPC : blackRookSwapsPC;
+                    pieceTypes = new PieceTypeEnum[] { PieceTypeEnum.King, PieceTypeEnum.Madness };
+                    break;
+                default:
+                    break;
+            }
+            if (pc != null && pieceTypes != null)
+            {
+                UpdateTargetWhitelist(ref pc, p, pieceTypes);
+                if (p.patterns[p.patterns.Length] != pc)
+                {
+                    System.Array.Resize<patternClass>(ref p.patterns, p.patterns.Length + 1);
+                    p.patterns[p.patterns.Length - 1] = pc;
+                }
+                initialized = true;
+            }
+        }
+
+        private static void Init_PatchPatterns(Board __instance)
+        {
+
+            foreach (Team team in __instance.Teams)
+            {
+                foreach (Piece p in team.pieces.Values)
+                {
+                    if (p == null) { continue; }
+                    UpdatePatternForSwaps(p);
+                }
+            }
+        }
+
+        [HarmonyPrepare]
+        public static void Init()
+        {
+            if (PlayerInput.Instance == null || PlayerInput.Instance.board_instance == null) { return; }
+            Init_PatchPatterns(PlayerInput.Instance.board_instance);
+        }
+
+        [HarmonyPatch(typeof(Board), nameof(Board.init))]
+        [HarmonyPostfix]
+        public static void Postfix(Board __instance)
+        {
+            Init_PatchPatterns(__instance);
+            // for (int i = 0; i < 8; i++)
+            // {
+            //     for (int j = 0; j < 8; j++)
+            //     {
+            //         __instance.SpawnWaterTile(new BoardSquare(i, j), __instance.activeTeam);
+            //     }
+            // }
+        }
+
+        [HarmonyPatch(typeof(Piece), nameof(Piece.MoveReplacedBySkill))]
+        [HarmonyPrefix]
+        public static bool Prefix_MovePatch(Piece __instance, [HarmonyArgument(0)] patternClass pattern, [HarmonyArgument(1)] bool hasTarget, [HarmonyArgument(2)] ref bool captured, ref PieceAction.PieceSkill __result)
+        {
+            if (pattern.switchPosition)
+            {
+                captured = true;
+                __result = PieceAction.PieceSkill.SwitchPosition;
+                return false;
             }
             return true;
         }
 
+        [HarmonyPatch(typeof(Piece), nameof(Piece.init))]
         [HarmonyPostfix]
-        public static void PostFix(Board __instance)
+        public static void Postfix_PieceInit(Piece __instance)
         {
-            foreach (Team team in __instance.Teams)
+            
+            switch (__instance.PieceType)
             {
-
-                foreach (Piece p in team.pieces.Values)
-                {
-                    if (p == null) {continue;}
-                    PieceTypeEnum pieceType = p.PieceType;
-                    switch (pieceType)
+                case PieceTypeEnum.Queen:
+                case PieceTypeEnum.Chimp:
+                case PieceTypeEnum.Mole:
+                case PieceTypeEnum.Duke:
+                case PieceTypeEnum.Baron:
+                    foreach (Piece item in __instance.team.pieces.Values)
                     {
-                        case PieceTypeEnum.Rook:
-                        case PieceTypeEnum.Bishop:
-                        case PieceTypeEnum.Queen:
-                        case PieceTypeEnum.Chimp:
-                        case PieceTypeEnum.Mole:
-                        case PieceTypeEnum.Tower:
-                        case PieceTypeEnum.Scorpion:
-                        case PieceTypeEnum.Joy:
-                            foreach (patternClass patternClass in p.patterns)
-                            {
-                                patternClass.moveDist -= 3;
-                            }
-                            break;
+                        switch (item.PieceType)
+                        {
+                            case PieceTypeEnum.Knight:
+                            case PieceTypeEnum.Knight_alt:
+                            case PieceTypeEnum.Griffin:
+                                UpdatePatternForSwaps(item);
+                                break;
+                            default:
+                                break;
+                        }
                     }
-                }
+                    break;
+                case PieceTypeEnum.Pawn:
+                case PieceTypeEnum.SkeletonSummon:
+                    foreach (Piece item in __instance.team.pieces.Values)
+                    {
+                        switch (item.PieceType)
+                        {
+                            case PieceTypeEnum.Bishop:
+                                UpdatePatternForSwaps(item);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                    break;
+                default:
+                    UpdatePatternForSwaps(__instance);
+                    break;
             }
+        }
+
+        [HarmonyCleanup]
+        public static void PatchCleanup()
+        {
+            initialized = false;
         }
     }
 }
