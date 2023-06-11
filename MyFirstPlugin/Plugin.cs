@@ -33,13 +33,12 @@ namespace MyFirstPlugin
         }
         private enum ModType
         {
-            Wolf_multi_jump,
             All_factions_can_do_queen_promotion,
             All_factions_can_capture_own_pawns,
             All_factions_have_unlimited_range,
             All_factions_have_mermaid_swaps_always,
             Secret_spell_cast_mana_bonus,
-            Water_tiles_boost_allies_debuff_enemies
+            Water_tiles_boost_allies_and_debuff_enemies
         }
 
         public ChessBoardState.Team teamFavor { get; private set; }
@@ -99,10 +98,10 @@ namespace MyFirstPlugin
         private void Update()
         {
             this.UpdateHook();
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadPlus))
-            {
-                LogPatternClassInfo();
-            }
+            //if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadPlus))
+            //{
+            //    LogPatternClassInfo();
+            //}
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.Tab))
             {
                 LogOpModInfo();
@@ -111,75 +110,66 @@ namespace MyFirstPlugin
 
             if (UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift))
             {
+                
                 if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
-                {
-                    this.TryUnpatch(ModType.Wolf_multi_jump);
-                    return;
-                }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
                 {
                     this.TryUnpatch(ModType.All_factions_can_do_queen_promotion);
                     return;
                 }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
+                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
                 {
                     this.TryUnpatch(ModType.All_factions_can_capture_own_pawns);
                     return;
                 }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
+                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
                 {
                     this.TryUnpatch(ModType.All_factions_have_unlimited_range);
                     return;
                 }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
+                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
                 {
                     this.TryUnpatch(ModType.All_factions_have_mermaid_swaps_always);
                     return;
                 }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F6))
+                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
                 {
                     this.TryUnpatch(ModType.Secret_spell_cast_mana_bonus);
                     return;
                 }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F7))
+                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F6))
                 {
-                    this.TryUnpatch(ModType.Water_tiles_boost_allies_debuff_enemies);
+                    this.TryUnpatch(ModType.Water_tiles_boost_allies_and_debuff_enemies);
                     return;
                 }
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
             {
-                this.TryPatch(ModType.Wolf_multi_jump);
+                this.TryPatch(ModType.All_factions_can_do_queen_promotion);
                 return;
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
             {
-                this.TryPatch(ModType.All_factions_can_do_queen_promotion);
+                this.TryPatch(ModType.All_factions_can_capture_own_pawns);
                 return;
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
             {
-                this.TryPatch(ModType.All_factions_can_capture_own_pawns);
+                this.TryPatch(ModType.All_factions_have_unlimited_range);
                 return;
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
             {
-                this.TryPatch(ModType.All_factions_have_unlimited_range);
+                this.TryPatch(ModType.All_factions_have_mermaid_swaps_always);
                 return;
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
             {
-                this.TryPatch(ModType.All_factions_have_mermaid_swaps_always);
+                this.TryPatch(ModType.Secret_spell_cast_mana_bonus);
                 return;
             }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F6))
             {
-                this.TryPatch(ModType.Secret_spell_cast_mana_bonus);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F7))
-            {
-                this.TryPatch(ModType.Water_tiles_boost_allies_debuff_enemies);
+                this.TryPatch(ModType.Water_tiles_boost_allies_and_debuff_enemies);
                 return;
             }
         }
@@ -345,9 +335,6 @@ namespace MyFirstPlugin
         {
             switch (modType)
             {
-                //case ModType.Wolf_multi_jump:
-                //    this.balancedPatchers[(int)modType].PatchAll(typeof(Wolf_multi_jump));
-                //    break;
                 case ModType.All_factions_can_do_queen_promotion:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsCanDoQueenPromotion));
                     break;
@@ -363,8 +350,8 @@ namespace MyFirstPlugin
                 case ModType.Secret_spell_cast_mana_bonus:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(SecretSpellCastManaBonus));
                     break;
-                case ModType.Water_tiles_boost_allies_debuff_enemies:
-                    this.balancedPatchers[(int)modType].PatchAll(typeof(WaterTilesBoostAlliesDebuffEnemies));
+                case ModType.Water_tiles_boost_allies_and_debuff_enemies:
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(WaterTilesBoostAlliesAndDebuffEnemies));
                     break;
                 default:
                     Logger.LogError($"{modType.ToString()} mod is currently not supported");
@@ -376,9 +363,6 @@ namespace MyFirstPlugin
         {
             switch (modType)
             {
-                case ModType.Wolf_multi_jump:
-                    this.balancedPatchers[(int)modType].UnpatchSelf();
-                    break;
                 case ModType.All_factions_can_do_queen_promotion:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
@@ -394,7 +378,7 @@ namespace MyFirstPlugin
                 case ModType.Secret_spell_cast_mana_bonus:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.Water_tiles_boost_allies_debuff_enemies:
+                case ModType.Water_tiles_boost_allies_and_debuff_enemies:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
                 default:
@@ -1583,7 +1567,7 @@ namespace MyFirstPlugin
         }
     }
 
-    public static class WaterTilesBoostAlliesDebuffEnemies
+    public static class WaterTilesBoostAlliesAndDebuffEnemies
     {
         [HarmonyPostfix]
         [HarmonyPatch(typeof(ChessBoardState), nameof(ChessBoardState.DoEndOfTurnAdjustments))]
@@ -1599,6 +1583,10 @@ namespace MyFirstPlugin
                         __instance.pieces[p].type == ChessBoardState.Piece.Type_Bishop)
                     {
                         __instance.pieces[p].AddFlag(ChessBoardState.Piece.Flag_Invincible);
+                    }
+                    if (__instance.pieces[p].IsPawn())
+                    {
+                        __instance.pieces[p].AddFlag(ChessBoardState.Piece.Flag_Naga_Queen_Boost);
                     }
                     __instance.pieces[p].AddFlag(ChessBoardState.Piece.Flag_War_Drums);
                 }
