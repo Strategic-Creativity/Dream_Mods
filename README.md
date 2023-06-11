@@ -3,9 +3,9 @@
  
 ## Features
  - ### OP Mods
-   - **Board editor** : Allows you to clone any selected piece(except king) & place it anywhere you like for any team.
+   - **Piece cloner** : Allows you to clone any selected piece(except king) & place it anywhere you like for any team.
    - **Piece remover** : Allows you to delete any selected piece(except king).
-   - **Wolf swap jump** : Allows wolf(vampire knight) to switch position with pawns instead of capturing it(keeping material constant).
+   - **Piece mover** : Allows Allows you to move any selected piece to any empty square.
  - ### Balanced Mods
    - **Wolf can multi jump** : Allows wolf to use its ability more than one time in a turn.(can stack with swam jump mod)
    - **All factions can do queen promotion** : Allows all factions to be able to choose their faction's queen unit on promotion menu, just like humans faction.
