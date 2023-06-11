@@ -12,7 +12,7 @@ using TMPro;
 
 namespace MyFirstPlugin
 {
-    [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
+    [BepInPlugin("DreamMods", "DreamMods", "2.0.0")]
     public class Plugin : BaseUnityPlugin
     {
         public static Plugin Instance { get; private set; }
