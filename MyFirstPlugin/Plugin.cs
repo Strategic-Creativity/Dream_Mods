@@ -63,7 +63,7 @@ namespace MyFirstPlugin
         private void Awake()
         {
             // Plugin startup logic
-            Logger.LogInfo("DreamMods is loaded! \n Note : This is only tested on version v0.8 (May not work on other versions)");
+            Logger.LogInfo("DreamMods is loaded! \n Note : This is only tested on version v0.81 (May not work on other versions)");
             string[] balancedModsNames = System.Enum.GetNames(typeof(ModType));
             this.balancedPatchers = new Harmony[balancedModsNames.Length];
             for (int i = 0; i < this.balancedPatchers.Length; i++)
