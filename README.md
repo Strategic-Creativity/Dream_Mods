@@ -14,6 +14,7 @@
    - **All factions have mermaid swaps always** : Allows rook equivalent, bishop equivlent & knight equivalent units in all factions to be able to switch position with their king equivalent, pawn equivalent & queen equivalent units respectively, just like mermaid faction but without need of water, anytime, anywhere.
    - **Secret spell cast mana bonus** : No spoilers.
    - **Water tiles boost allies and debuff enemies** : Water tiles gives significant buffs to your pieces and gives a strong debuff to enemy pieces.
+   - **Aliens can chain their extra turns** : Changes the way aliens work by allowing them to move around very quickly before enemy gets their turn, but with only passive non-capture moves.
 
 
 
