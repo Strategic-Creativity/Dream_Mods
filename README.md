@@ -17,7 +17,7 @@
    - **Super Secrets** : No spoilers.
    - **Water of Magic** : Water tiles gives significant buffs to your pieces and gives a strong debuff to enemy pieces.
    - **Swift Aliens** : Changes the way aliens work by allowing them to move around very quickly before enemy gets their turn, but with only passive non-capture moves.
-   - **Divine Angels** : Increases the range of abilities of angels and allows all non-pawn units to apply holy-flare debuff to surrounding enemies.
+   - **Divine Angels** : Greatly increases the range of abilities of angels and allows all non-pawn units to apply holy-flare debuff to surrounding enemies.
 
 
 
