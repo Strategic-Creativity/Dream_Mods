@@ -1,16 +1,13 @@
 ﻿using BepInEx;
+using BepInEx.Logging;
+using DG.Tweening;
 using HarmonyLib;
-using UnityEngine;
-using UnityEngine.Events;
-using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 using System.Reflection;
-using UnityEngine.UI;
-using JetBrains.Annotations;
 using TMPro;
-using DG.Tweening;
-using static UnityEngine.Random;
-using System;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace MyFirstPlugin
 {
@@ -23,6 +20,7 @@ namespace MyFirstPlugin
         private Harmony fixesPatcher;
 
         private HashSet<ModType> patchesHashSet;
+        public static Dictionary<ModType, ChessBoardState.Team> biasDict;
         public bool MultiplayerActive { get; private set; } = false;
         public bool AdventureModeActive { get; private set; } = false;
 
@@ -33,18 +31,21 @@ namespace MyFirstPlugin
             Piece_Mover,
             Moves_Analysis_Tool
         }
-        private enum ModType
+        public enum ModType
         {
-            All_factions_can_do_queen_promotion,
-            All_factions_can_capture_own_pawns,
-            All_factions_have_unlimited_range,
-            All_factions_have_mermaid_swaps_always,
-            Secret_spell_cast_mana_bonus,
-            Water_tiles_boost_allies_and_debuff_enemies,
-            Aliens_can_chain_their_extra_turns
+            Queen_promotion,
+            Self_pawn_capture,
+            Unlimited_range,
+            Tunnel_swaps,
+            Super_Secrets,
+            Water_of_Magic,
+            Super_Aliens,
+            Divine_Angels
         }
 
-        public ChessBoardState.Team teamFavor { get; private set; }
+        private Dictionary<ModType, KeyCode> hotkeyDict;
+
+        //public ChessBoardState.Team teamFavor { get; private set; }
 
         /*this.scenes[1].name = "1(main)";
 		this.scenes[5].name = "5(options)";
@@ -70,6 +71,21 @@ namespace MyFirstPlugin
             {
                 this.balancedPatchers[i] = new Harmony(balancedModsNames[i]);
             }
+            biasDict = new Dictionary<ModType, ChessBoardState.Team>();
+            foreach (ModType mod in System.Enum.GetValues(typeof(ModType)))
+            {
+                biasDict[mod] = ChessBoardState.Team.None;
+            }
+            //Hotkey initialization logic
+            hotkeyDict = new Dictionary<ModType, KeyCode>();
+            hotkeyDict[ModType.Queen_promotion] = KeyCode.F1;
+            hotkeyDict[ModType.Self_pawn_capture] = KeyCode.F2;
+            hotkeyDict[ModType.Unlimited_range] = KeyCode.F3;
+            hotkeyDict[ModType.Tunnel_swaps] = KeyCode.F4;
+            hotkeyDict[ModType.Super_Secrets] = KeyCode.F5;
+            hotkeyDict[ModType.Water_of_Magic] = KeyCode.F6;
+            hotkeyDict[ModType.Super_Aliens] = KeyCode.F7;
+            hotkeyDict[ModType.Divine_Angels] = KeyCode.F8;
             string[] opModsNames = System.Enum.GetNames(typeof(OpModType));
             this.opPatchers = new Harmony[opModsNames.Length];
             for (int i = 0; i < this.opPatchers.Length; i++)
@@ -79,7 +95,7 @@ namespace MyFirstPlugin
             Plugin.Instance = this;
             this.fixesPatcher = new Harmony("fixesPatcher");
             this.patchesHashSet = new HashSet<ModType>();
-            this.teamFavor = ChessBoardState.Team.White;
+            //this.teamFavor = ChessBoardState.Team.White;
             Logger.LogInfo("Press 'TAB' inside game for mods info and hotkeys.\n Note : Key input only works in-game.\n Note : Press 'Shift + (hotkey)' to deativate mods.");
             this.PatchFixes();
             this.PatchOpMods();
@@ -99,13 +115,29 @@ namespace MyFirstPlugin
         }
 
         public void UpdateHook() { }
+
+
         private void Update()
         {
             this.UpdateHook();
-            //if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadPlus))
-            //{
-            //    LogPatternClassInfo();
-            //}
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadPlus))
+            {
+                PlayerInput.Instance.MenuSelection_hook.SelectShop();
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadMinus))
+            {
+                PlayerInput.Instance.MenuSelection_hook.SelectHowTo();
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadMultiply))
+            {
+                SaveSystem.ResetPurchases();
+                SaveSystem.data.SetGold(0);
+            }
+            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.KeypadDivide))
+            {
+                PlayerInput.Instance.MenuSelection_hook.SwitchSkin(1);
+                PlayerInput.Instance.MenuSelection_hook.SwitchSkin(2);
+            }
             if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.Tab))
             {
                 LogOpModInfo();
@@ -114,78 +146,40 @@ namespace MyFirstPlugin
 
             if (UnityInput.Current.GetKey(KeyCode.LeftShift) || UnityInput.Current.GetKey(KeyCode.RightShift))
             {
-                
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
+
+                foreach (ModType balancedMod in hotkeyDict.Keys)
                 {
-                    this.TryUnpatch(ModType.All_factions_can_do_queen_promotion);
-                    return;
+                    if (UnityInput.Current.GetKeyDown(hotkeyDict[balancedMod]))
+                    {
+                        this.TryUnpatch(balancedMod);
+                        return;
+                    }
                 }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
+            }
+            if (UnityInput.Current.GetKey(KeyCode.Alpha1))
+            {
+                this.TrySetBias(ChessBoardState.Team.None);
+                return;
+            }
+            if (UnityInput.Current.GetKey(KeyCode.Alpha2))
+            {
+                this.TrySetBias(ChessBoardState.Team.White);
+                return;
+            }
+            if (UnityInput.Current.GetKey(KeyCode.Alpha3))
+            {
+                this.TrySetBias(ChessBoardState.Team.Black);
+                return;
+            }
+            foreach (ModType balancedMod in hotkeyDict.Keys)
+            {
+                if (UnityInput.Current.GetKeyDown(hotkeyDict[balancedMod]))
                 {
-                    this.TryUnpatch(ModType.All_factions_can_capture_own_pawns);
-                    return;
-                }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
-                {
-                    this.TryUnpatch(ModType.All_factions_have_unlimited_range);
-                    return;
-                }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
-                {
-                    this.TryUnpatch(ModType.All_factions_have_mermaid_swaps_always);
-                    return;
-                }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
-                {
-                    this.TryUnpatch(ModType.Secret_spell_cast_mana_bonus);
-                    return;
-                }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F6))
-                {
-                    this.TryUnpatch(ModType.Water_tiles_boost_allies_and_debuff_enemies);
-                    return;
-                }
-                if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F7))
-                {
-                    this.TryUnpatch(ModType.Aliens_can_chain_their_extra_turns);
+                    this.TryPatch(balancedMod);
                     return;
                 }
             }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F1))
-            {
-                this.TryPatch(ModType.All_factions_can_do_queen_promotion);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F2))
-            {
-                this.TryPatch(ModType.All_factions_can_capture_own_pawns);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F3))
-            {
-                this.TryPatch(ModType.All_factions_have_unlimited_range);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F4))
-            {
-                this.TryPatch(ModType.All_factions_have_mermaid_swaps_always);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F5))
-            {
-                this.TryPatch(ModType.Secret_spell_cast_mana_bonus);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F6))
-            {
-                this.TryPatch(ModType.Water_tiles_boost_allies_and_debuff_enemies);
-                return;
-            }
-            if (UnityInput.Current.GetKeyDown(UnityEngine.KeyCode.F7))
-            {
-                this.TryPatch(ModType.Aliens_can_chain_their_extra_turns);
-                return;
-            }
+            
         }
 
         public void LogThisInfo(string message)
@@ -202,15 +196,15 @@ namespace MyFirstPlugin
             }
             if (patchesHashSet.Contains(mod))
             {
-                LogThisInfo($"{mod.ToString().Replace('_', ' ')} mod is already active");
-                ShowNotificationPopup($"{mod.ToString().Replace('_', ' ')} mod is already active",
+                LogThisInfo($"{mod.CleanName()} mod is already active");
+                ShowNotificationPopup($"{mod.CleanName()} mod is already active",
                 new Color(0f, 0.3f, 0f), Color.white, true);
                 return;
             }
             this.PatchThisBalancedMod(mod);
-            LogThisInfo($". . . {mod.ToString().Replace('_', ' ')} mod activated . . .");
+            LogThisInfo($". . . {mod.CleanName()} mod activated . . .");
             //PopupText.TryShowMessage($". . . {mod.ToString()} mod activated . . .");
-            ShowNotificationPopup($". . . {mod.ToString().Replace('_', ' ')} mod activated . . .",
+            ShowNotificationPopup($". . . {mod.CleanName()} mod activated . . .",
                 new Color(0f, 0.3f, 0f), Color.white, true);
             this.patchesHashSet.Add(mod);
             LogBalancedModInfo();
@@ -225,14 +219,14 @@ namespace MyFirstPlugin
             }
             if (!patchesHashSet.Contains(mod))
             {
-                LogThisInfo($"{mod.ToString().Replace('_', ' ')} mod is already disabled");
-                ShowNotificationPopup($"{mod.ToString().Replace('_', ' ')} mod is already disabled",
+                LogThisInfo($"{mod.CleanName()} mod is already disabled");
+                ShowNotificationPopup($"{mod.CleanName()} mod is already disabled",
                 new Color(0.3f, 0f, 0f), Color.white, true);
                 return;
             }
             this.UnpatchThisBalancedMod(mod);
-            LogThisInfo($". . . {mod.ToString().Replace('_', ' ')} mod disabled . . .");
-            ShowNotificationPopup($". . . {mod.ToString().Replace('_', ' ')} mod disabled . . .",
+            LogThisInfo($". . . {mod.CleanName()} mod disabled . . .");
+            ShowNotificationPopup($". . . {mod.CleanName()} mod disabled . . .",
                 new Color(0.3f, 0f, 0f), Color.white, true);
             this.patchesHashSet.Remove(mod);
             LogBalancedModInfo();
@@ -358,29 +352,32 @@ namespace MyFirstPlugin
         {
             switch (modType)
             {
-                case ModType.All_factions_can_do_queen_promotion:
+                case ModType.Queen_promotion:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsCanDoQueenPromotion));
                     break;
-                case ModType.All_factions_can_capture_own_pawns:
+                case ModType.Self_pawn_capture:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsCanCaptureOwnPawns));
                     break;
-                case ModType.All_factions_have_unlimited_range:
+                case ModType.Unlimited_range:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsHaveUnlimitedRange));
                     break;
-                case ModType.All_factions_have_mermaid_swaps_always:
+                case ModType.Tunnel_swaps:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(AllFactionsHaveFullBoardMermaidSwaps));
                     break;
-                case ModType.Secret_spell_cast_mana_bonus:
+                case ModType.Super_Secrets:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(SecretSpellCastManaBonus));
                     break;
-                case ModType.Water_tiles_boost_allies_and_debuff_enemies:
+                case ModType.Water_of_Magic:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(WaterTilesBoostAlliesAndDebuffEnemies));
                     break;
-                case ModType.Aliens_can_chain_their_extra_turns:
+                case ModType.Super_Aliens:
                     this.balancedPatchers[(int)modType].PatchAll(typeof(AliensCanChainTheirExtraTurns));
                     break;
+                case ModType.Divine_Angels:
+                    this.balancedPatchers[(int)modType].PatchAll(typeof(AngelsAbilitiesHaveMoreRange));
+                    break;
                 default:
-                    Logger.LogError($"'{modType.ToString().Replace('_', ' ')}' mod is currently not supported");
+                    Logger.LogError($"'{modType.CleanName()}' mod is currently not supported");
                     return;
             }
         }
@@ -389,29 +386,32 @@ namespace MyFirstPlugin
         {
             switch (modType)
             {
-                case ModType.All_factions_can_do_queen_promotion:
+                case ModType.Queen_promotion:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.All_factions_can_capture_own_pawns:
+                case ModType.Self_pawn_capture:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.All_factions_have_unlimited_range:
+                case ModType.Unlimited_range:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.All_factions_have_mermaid_swaps_always:
+                case ModType.Tunnel_swaps:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.Secret_spell_cast_mana_bonus:
+                case ModType.Super_Secrets:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.Water_tiles_boost_allies_and_debuff_enemies:
+                case ModType.Water_of_Magic:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
-                case ModType.Aliens_can_chain_their_extra_turns:
+                case ModType.Super_Aliens:
+                    this.balancedPatchers[(int)modType].UnpatchSelf();
+                    break;
+                case ModType.Divine_Angels:
                     this.balancedPatchers[(int)modType].UnpatchSelf();
                     break;
                 default:
-                    Logger.LogError($"{modType.ToString()} mod is currently not supported");
+                    Logger.LogError($"{modType.CleanName()} mod is currently not supported");
                     return;
             }
         }
@@ -420,14 +420,15 @@ namespace MyFirstPlugin
         {
             //int expectedCapacity = System.Enum.GetValues(typeof(ModType)).Length * 4 + 3;
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.AppendLine("List of balanced mods {(name) then (hotkey) then (state)} :");
+            sb.AppendLine("List of balanced mods [(name) (hotkey) (bias) (state)] :");
             int i = 1;
-            foreach (string mod in System.Enum.GetNames(typeof(ModType)))
+            foreach (ModType mod in System.Enum.GetValues(typeof(ModType)))
             {
-                string state = patchesHashSet.Contains((ModType)System.Enum.Parse(typeof(ModType), mod)) ? "(active)" : "";
-                sb.AppendLine($"{i}.\t{mod.ToString()} ({'F' + i.ToString()}) {state}");
+                string state = patchesHashSet.Contains(mod) ? "(active)" : "";
+                sb.AppendLine($"{i}.\t{mod.CleanName()} ({hotkeyDict[mod]}) {mod.Bias()} {state}");
                 i++;
             }
+            sb.AppendLine("To set bias, hold [0] (None), [1] (White) or [2] (Black)\n\tand press the respective hotkey !");
             Logger.LogInfo(sb);
         }
 
@@ -440,10 +441,10 @@ namespace MyFirstPlugin
             }
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
             sb.AppendLine("List of OP mods and their usage :");
-            foreach (string opMod in System.Enum.GetNames(typeof(OpModType)))
+            foreach (OpModType opMod in System.Enum.GetValues(typeof(OpModType)))
             {
                 sb.Append($"{opMod} (Usage) : ");
-                sb.AppendLine(this.GetOpModUsageInfoString((OpModType)System.Enum.Parse(typeof(OpModType), opMod)));
+                sb.AppendLine(this.GetOpModUsageInfoString(opMod));
             }
             Logger.LogInfo(sb);
         }
@@ -677,7 +678,7 @@ namespace MyFirstPlugin
             bg.AddComponent<RectTransform>().sizeDelta = new Vector2(290f, 100f);
             bg.AddComponent<Image>().color = bgColor;
             CanvasGroup canvasGroup = bg.AddComponent<CanvasGroup>();
-            
+
             GameObject gameObject = new GameObject();
             gameObject.name = "Text";
             TextMeshProUGUI textMeshProUGUI = gameObject.AddComponent<TextMeshProUGUI>();
@@ -692,7 +693,7 @@ namespace MyFirstPlugin
             {
                 gameObject2 = PlayerInput.Instance.FindGO("Game - Right Board", true);
                 bg.transform.localScale = new Vector3(1f, 1f, 1f);
-            } 
+            }
             else
             {
                 foreach (GameObject go in SceneManager.GetActiveScene().GetRootGameObjects())
@@ -718,6 +719,37 @@ namespace MyFirstPlugin
                 if (onComplete != null) onComplete();
             });
         }
+
+        private void TrySetBias(ChessBoardState.Team bias)
+        {
+            foreach (ModType balancedMod in hotkeyDict.Keys)
+            {
+                if (UnityInput.Current.GetKeyDown(hotkeyDict[balancedMod]))
+                {
+                    biasDict[balancedMod] = bias;
+                    Logger.LogInfo($". . . {balancedMod.CleanName()}'s bias changed to {bias} . . .");
+                    Color fg = bias == ChessBoardState.Team.Black ? Color.white : Color.black;
+                    Color bg;
+                    switch (bias)
+                    {
+                        case ChessBoardState.Team.None:
+                            bg = new Color(0.6f, 0.6f, 0.6f);
+                            break;
+                        case ChessBoardState.Team.White:
+                            bg = Color.white;
+                            break;
+                        case ChessBoardState.Team.Black:
+                            bg = Color.black;
+                            break;
+                        default:
+                            bg = new Color(0.6f, 0.6f, 0.6f);
+                            break;
+                    }
+                    ShowNotificationPopup($". . . {balancedMod.CleanName()}'s bias changed to {bias} . . .", bg, fg, true);
+                    return;
+                }
+            }
+        }
     }
 
 
@@ -740,7 +772,7 @@ namespace MyFirstPlugin
         {
             chessBoard = __instance;
             working = Phase.None;
-            originalMovesList = new List<ChessBoardState> (0);
+            originalMovesList = new List<ChessBoardState>(0);
         }
 
         [HarmonyPatch(typeof(ChessBoard), "Update")]
@@ -756,7 +788,7 @@ namespace MyFirstPlugin
 
             if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKey(KeyCode.DownArrow))
             {
-                
+
                 Move_Forward(__instance);
             }
 
@@ -777,9 +809,9 @@ namespace MyFirstPlugin
             if (working != Phase.Working || self.phase != ChessBoard.Phase.PlayerMove) { return; }
             backIndex++;
             if (self.saved_moves().Count > 1)
-                {
-                    self.saved_moves().RemoveAt(0);
-                }
+            {
+                self.saved_moves().RemoveAt(0);
+            }
             else
             {
                 backIndex--;
@@ -803,13 +835,14 @@ namespace MyFirstPlugin
         {
             if (working != Phase.Working || self.phase != ChessBoard.Phase.PlayerMove) { return; }
             backIndex--;
-            if (backIndex < 0) { 
+            if (backIndex < 0)
+            {
                 backIndex = 0;
                 working = Phase.None;
                 Plugin.Instance.LogThisInfo($"(->) pressed, Analysis stopped !");
                 Plugin.Instance.ShowNotificationPopup("Analysis stopped !",
                 Color.black, Color.white, false);
-                return; 
+                return;
             }
             self.next_move = originalMovesList[backIndex].last_move;
             self.phase = ChessBoard.Phase.ExecuteMove;
@@ -830,141 +863,144 @@ namespace MyFirstPlugin
             //Plugin.Instance.LogThisInfo("All other things working fine");
         }
 
-        //[HarmonyPatch(typeof(MoveHistoryUI), nameof(MoveHistoryUI.UpdateMoves))]
-        //[HarmonyPrefix]
-        //public static bool UpdateMoves_MoveHistoryUI(MoveHistoryUI __instance, [HarmonyArgument(0)]ChessBoard board, [HarmonyArgument(1)]ChessBoardState add_state)
-        //{
-        //    if (working != Phase.Working)
-        //    {
-        //        return true;
-        //    }
-        //    for (int i = 0; i < __instance.movesUIP1.Length; i++)
-        //    {
-        //        __instance.movesUIP1[i].text = "";
-        //        __instance.movesUIP2[i].text = "";
-        //        __instance.turnNumbers()[i].text = (i + 1).ToString();
-        //    }
-        //    int num = 10;
-        //    if (board.state.GetCurrentTeam() == ChessBoardState.Team.Black)
-        //    {
-        //        num = 9;
-        //    }
-        //    List<ChessBoardState> list = new List<ChessBoardState>();
-        //    if (add_state != null)
-        //    {
-        //        list.Add(add_state);
-        //        num--;
-        //    }
-        //    list.AddRange(board.GetTheSavedMoves(-1));
-        //    list.Reverse();
-        //    if (list.Count < 1)
-        //    {
-        //        return false;
-        //    }
-        //    int num2 = 0;
-        //    ChessBoardState.Team team = ChessBoardState.Team.None;
-        //    List<string> list2 = new List<string>();
-        //    List<string> list3 = new List<string>();
-        //    for (int j = 0; j < list.Count; j++)
-        //    {
-        //        ChessBoardState chessBoardState = list[j];
-        //        ChessBoardState chessBoardState2 = new ChessBoardState();
-        //        chessBoardState2.Init();
-        //        ChessBoardState.CopyState(chessBoardState, chessBoardState2);
-        //        ChessBoardState.CopyPieces(chessBoardState, chessBoardState2);
-        //        chessBoardState2.GenerateMoves(ChessBoardState.Team.None, true, false, false);
-        //        PieceMoves.Move last_move = chessBoardState2.last_move;
-        //        ChessBoardState.Team team2 = chessBoardState2.GetTeam(last_move.piece_moved);
-        //        Utility.IndexToPos((int)last_move.to_square, out int item, out int item2);
-        //        string text = (PlayerInput.Instance.GetTypeGFX(chessBoardState2.pieces[(int)last_move.piece_moved].race, chessBoardState2.pieces[(int)last_move.piece_moved].type).localization ?? "").ToString() + " ";
-        //        if (last_move.piece_targeted != 0 && chessBoardState.IsMoveThreateningSquare(chessBoardState.pieces[(int)last_move.piece_targeted].square, last_move))
-        //        {
-        //            text += "x";
-        //        }
-        //        if (last_move.move_type == 11)
-        //        {
-        //            if (chessBoardState2.last_move.to_square > chessBoardState2.last_move.from_square)
-        //            {
-        //                text = "0-0";
-        //            }
-        //            else
-        //            {
-        //                text = "0-0-0";
-        //            }
-        //        }
-        //        if (last_move.move_type != 11)
-        //        {
-        //            text += Utility.positionToString(item, item2);
-        //        }
-        //        if (chessBoardState2.IsTeamInCheckMate((team2 == ChessBoardState.Team.White) ? ChessBoardState.Team.Black : ChessBoardState.Team.White))
-        //        {
-        //            text += "#";
-        //        }
-        //        else if (chessBoardState2.IsTeamInCheck((team2 == ChessBoardState.Team.White) ? ChessBoardState.Team.Black : ChessBoardState.Team.White))
-        //        {
-        //            text += "+";
-        //        }
-        //        if (team == team2)
-        //        {
-        //            if (team2 == ChessBoardState.Team.White)
-        //            {
-        //                list2.Add(text);
-        //                list3.Add("");
-        //            }
-        //            else
-        //            {
-        //                list3.Add(text);
-        //                list2.Add("");
-        //            }
-        //            num2++;
-        //        }
-        //        else if (team2 == ChessBoardState.Team.White)
-        //        {
-        //            list2.Add(text);
-        //            if (list2.Count > list3.Count)
-        //            {
-        //                num2++;
-        //            }
-        //        }
-        //        else
-        //        {
-        //            list3.Add(text);
-        //            if (list3.Count > list2.Count)
-        //            {
-        //                num2++;
-        //            }
-        //        }
-        //        team = team2;
-        //    }
-        //    if (list2.Count < list3.Count)
-        //    {
-        //        list2.Add("");
-        //    }
-        //    if (list3.Count < list2.Count)
-        //    {
-        //        list3.Add("");
-        //    }
-        //    int num3 = num2 - __instance.movesUIP1.Length;
-        //    if (num3 < 0)
-        //    {
-        //        num3 = 0;
-        //    }
-        //    for (int k = 0; k < __instance.movesUIP1.Length; k++)
-        //    {
-        //        int num4 = k + num3;
-        //        if (num4 < list2.Count)
-        //        {
-        //            __instance.movesUIP1[k].text = list2[num4];
-        //        }
-        //        if (num4 < list3.Count)
-        //        {
-        //            __instance.movesUIP2[k].text = list3[num4];
-        //        }
-        //        __instance.turnNumbers()[k].text = (num4 + 1).ToString();
-        //    }
-        //    return false;
-        //}
+        [HarmonyPatch(typeof(MoveHistoryUI), nameof(MoveHistoryUI.UpdateMoves))]
+        [HarmonyPrefix]
+        public static bool ExtraDetailCopyMoves(MoveHistoryUI __instance, ChessBoard board, ChessBoardState add_state, bool printout)
+        {
+            if (!printout)
+            {
+                return true;
+            }
+            for (int i = 0; i < __instance.movesUIP1.Length; i++)
+            {
+                __instance.movesUIP1[i].text = "";
+                __instance.movesUIP2[i].text = "";
+                __instance.turnNumbers()[i].text = (i + 1).ToString();
+            }
+            int num = 10;
+            if (board.state.GetCurrentTeam() == ChessBoardState.Team.Black)
+            {
+                num = 9;
+            }
+            List<ChessBoardState> list = new List<ChessBoardState>();
+            if (add_state != null)
+            {
+                list.Add(add_state);
+                num--;
+            }
+            list.AddRange(board.GetTheSavedMoves(-1));
+            list.Reverse();
+            if (list.Count < 1)
+            {
+                return false;
+            }
+            int num2 = 0;
+            ChessBoardState.Team team = ChessBoardState.Team.None;
+            List<string> list2 = new List<string>();
+            List<string> list3 = new List<string>();
+            for (int j = 0; j < list.Count; j++)
+            {
+                ChessBoardState chessBoardState = list[j];
+                ChessBoardState chessBoardState2 = new ChessBoardState();
+                chessBoardState2.Init();
+                ChessBoardState.CopyState(chessBoardState, chessBoardState2);
+                ChessBoardState.CopyPieces(chessBoardState, chessBoardState2);
+                chessBoardState2.GenerateMoves(ChessBoardState.Team.None, true, false, false);
+                PieceMoves.Move last_move = chessBoardState2.last_move;
+                ChessBoardState.Team team2 = chessBoardState2.GetTeam(last_move.piece_moved);
+                Utility.IndexToPos((int)last_move.to_square, out int x1, out int y1);
+                Utility.IndexToPos(last_move.from_square, out int x0, out int y0);
+                string text = (PlayerInput.Instance.GetTypeGFX(chessBoardState2.pieces[(int)last_move.piece_moved].race, chessBoardState2.pieces[(int)last_move.piece_moved].type).localization ?? "").ToString() + " ";
+                
+                if (last_move.move_type == 11)
+                {
+                    if (chessBoardState2.last_move.to_square > chessBoardState2.last_move.from_square)
+                    {
+                        text = "0-0";
+                    }
+                    else
+                    {
+                        text = "0-0-0";
+                    }
+                }
+                if (last_move.move_type != 11)
+                {
+                    //Change done here to include starting position also
+                    text += Utility.positionToString(x0, y0) + " ";
+                    if (last_move.piece_targeted != 0 && chessBoardState.IsMoveThreateningSquare(chessBoardState.pieces[(int)last_move.piece_targeted].square, last_move))
+                    {
+                        text += "x";
+                    }
+                    text += Utility.positionToString(x1, y1);
+                }
+                if (chessBoardState2.IsTeamInCheckMate((team2 == ChessBoardState.Team.White) ? ChessBoardState.Team.Black : ChessBoardState.Team.White))
+                {
+                    text += "#";
+                }
+                else if (chessBoardState2.IsTeamInCheck((team2 == ChessBoardState.Team.White) ? ChessBoardState.Team.Black : ChessBoardState.Team.White))
+                {
+                    text += "+";
+                }
+                if (team == team2)
+                {
+                    if (team2 == ChessBoardState.Team.White)
+                    {
+                        list2.Add(text);
+                        list3.Add("");
+                    }
+                    else
+                    {
+                        list3.Add(text);
+                        list2.Add("");
+                    }
+                    num2++;
+                }
+                else if (team2 == ChessBoardState.Team.White)
+                {
+                    list2.Add(text);
+                    if (list2.Count > list3.Count)
+                    {
+                        num2++;
+                    }
+                }
+                else
+                {
+                    list3.Add(text);
+                    if (list3.Count > list2.Count)
+                    {
+                        num2++;
+                    }
+                }
+                team = team2;
+            }
+            if (list2.Count < list3.Count)
+            {
+                list2.Add("");
+            }
+            if (list3.Count < list2.Count)
+            {
+                list3.Add("");
+            }
+            string text2 = "";
+            for (int k = 0; k < num2; k++)
+            {
+                text2 += (k + 1).ToString();
+                if (k < list2.Count)
+                {
+                    text2 = text2 + " " + list2[k];
+                }
+                if (k < list3.Count)
+                {
+                    text2 = text2 + " " + list3[k];
+                }
+                text2 += "\n";
+            }
+            GUIUtility.systemCopyBuffer = text2;
+            Plugin.Instance.LogThisInfo("Move-list(extra detail) copied to clipboard !");
             
+            return false;
+        }
+
         private static void UpdateMovesListAfterExtrapolationEnd(ChessBoard self)
         {
             TryRevertGameEnd(self);
@@ -1021,7 +1057,7 @@ namespace MyFirstPlugin
             VictoryManager.instance.GameIsDone = false;
 
             self.phase = ChessBoard.Phase.PlayerMove;
-            
+
         }
 
         private static void PreventAIFromRunning(ChessBoard self)
@@ -1037,12 +1073,12 @@ namespace MyFirstPlugin
         {
             Plugin.Instance.LogThisInfo("(S) pressed, current move-list saved for analysis ! ! !");
             Plugin.Instance.ShowNotificationPopup("move-list saved for analysis !",
-                Color.black, Color.white, false, delegate()
+                Color.black, Color.white, false, delegate ()
                 {
                     working = Phase.None;
                     EnsureInitialization();
                 });
-            
+
         }
 
         private enum Phase
@@ -1059,7 +1095,8 @@ namespace MyFirstPlugin
         [HarmonyPrefix]
         public static bool Unlock(PlayerInput __instance, [HarmonyArgument(0)] Race race, ref bool __result)
         {
-            if (race == Race.Cthulhu) {
+            if (race == Race.Cthulhu)
+            {
                 __result = true;
                 return false;
             }
@@ -1087,7 +1124,7 @@ namespace MyFirstPlugin
                 }
 
                 Plugin.Instance.LogThisInfo($". . . board clicked on {coords.x}, {coords.y} . . .");
-                if (__instance.selectedPiece  > 0)
+                if (__instance.selectedPiece > 0)
                 {
                     ChessBoardState.Piece sp = __instance.state.pieces[__instance.selectedPiece];
                     byte target = __instance.state.GetPieceOnSquare(coords.x, coords.y);
@@ -1203,8 +1240,8 @@ namespace MyFirstPlugin
         //}
     }
 
-    
-    
+
+
     public static class WolfMultiJump
     {
         [HarmonyPatch(typeof(PieceMoves), nameof(PieceMoves.KnightMoves))]
@@ -1240,14 +1277,15 @@ namespace MyFirstPlugin
         }
     }
 
-    
+
     public static class AllFactionsCanDoQueenPromotion
     {
         [HarmonyPatch(typeof(UpgradeSelect), nameof(UpgradeSelect.Open), typeof(byte))]
         [HarmonyPostfix]
         public static void Postfix(UpgradeSelect __instance, [HarmonyArgument(0)] byte p)
         {
-            
+            ChessBoardState.Team bias = Plugin.ModType.Queen_promotion.Bias();
+            if (bias != ChessBoardState.Team.None && ChessBoard.Instance.state.GetTeam(p) != bias) { return; }
             __instance.new_piece_to_upgrade = p;
             Vector2 pieceWorldPosition = InstanceMonoBehaviour<ChessBoard>.Instance.GetPieceWorldPosition(p, InstanceMonoBehaviour<ChessBoard>.Instance.state);
             pieceWorldPosition.x -= 4f;
@@ -1274,7 +1312,7 @@ namespace MyFirstPlugin
             __instance.pieces[0].gameObject.SetActive(true);
         }
 
-        
+
     }
 
     public static class AllFactionsCanCaptureOwnPawns
@@ -1295,7 +1333,9 @@ namespace MyFirstPlugin
         [HarmonyPrefix]
         public static bool Prefix(ChessBoardState __instance, [HarmonyArgument(0)] ChessBoardState.Team team, [HarmonyArgument(2)] byte capturer, [HarmonyArgument(3)] byte target, ref bool __result)
         {
-            if (__instance.GetTeam(target) == team && __instance.pieces[target].IsPawn() && __instance.pieces[capturer].IsPawn())
+            ChessBoardState.Team bias = Plugin.ModType.Self_pawn_capture.Bias();
+            if ((bias == ChessBoardState.Team.None || team == bias) && __instance.GetTeam(target) == team
+                && __instance.pieces[target].IsPawn() && !__instance.pieces[capturer].IsPawn())
             {
                 __result = true;
                 return false;
@@ -1309,277 +1349,39 @@ namespace MyFirstPlugin
 
         [HarmonyPatch(typeof(PieceMoves), "StraightSlideMoves")]
         [HarmonyPrefix]
-        public static void PreFix_Orthogonal([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(2)] byte pc, [HarmonyArgument(3)] ref int distance)
+        public static void PreFix_Orthogonal([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(2)] byte pc, [HarmonyArgument(3)] ref int __result)
         {
+            ChessBoardState.Team bias = Plugin.ModType.Unlimited_range.Bias();
+            if (bias != ChessBoardState.Team.None && ChessBoard.Instance.state.GetTeam(pc) != bias) { return; }
             ChessBoardState.Piece p = state.pieces[pc];
             if (p.IsQueen() || p.IsRook())
             {
-                distance = 7;
+                __result = 7;
             }
         }
 
         [HarmonyPatch(typeof(PieceMoves), "AngleSlideMoves")]
         [HarmonyPrefix]
-        public static void PreFix_Diagonal([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(2)] byte pc, [HarmonyArgument(3)] ref int distance)
+        public static void PreFix_Diagonal([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(2)] byte pc, [HarmonyArgument(3)] ref int __result)
         {
+            ChessBoardState.Team bias = Plugin.ModType.Unlimited_range.Bias();
+            if (bias != ChessBoardState.Team.None && ChessBoard.Instance.state.GetTeam(pc) != bias) { return; }
             ChessBoardState.Piece p = state.pieces[pc];
             if (p.IsQueen() || p.type == ChessBoardState.Piece.Type_Bishop)
             {
-                distance = 7;
+                __result = 7;
             }
         }
     }
 
     public static class AllFactionsHaveFullBoardMermaidSwaps
     {
-        //public static bool initialized = false;
-        //private static patternClass whiteRookSwapsPC = new patternClass()
-        //{
-        //    allBoardMove = true,
-        //    mustTarget = true,
-        //    targetsAllies = true,
-        //    doesNotTargetEnemies = true,
-        //    switchPosition = true,
-        //    enabled = true,
-        //    moveDist = 4,
-        //    targetWhitelist = new string[] { "King" },
-        //    targetBlacklist = new string[] { },
-        //    target = new BoardSquare[] { },
-        //    movement = new BoardSquare[] { },
-        //    required = new BoardSquare[] { }
-        //};
-        //private static patternClass blackRookSwapsPC = new patternClass()
-        //{
-        //    allBoardMove = true,
-        //    mustTarget = true,
-        //    targetsAllies = true,
-        //    doesNotTargetEnemies = true,
-        //    switchPosition = true,
-        //    enabled = true,
-        //    moveDist = 4,
-        //    targetWhitelist = new string[] { "King" },
-        //    targetBlacklist = new string[] { },
-        //    target = new BoardSquare[] { },
-        //    movement = new BoardSquare[] { },
-        //    required = new BoardSquare[] { }
-        //};
-        //private static patternClass whiteBishopSwapsPC = new patternClass()
-        //{
-        //    allBoardMove = true,
-        //    mustTarget = true,
-        //    targetsAllies = true,
-        //    doesNotTargetEnemies = true,
-        //    switchPosition = true,
-        //    enabled = true,
-        //    moveDist = 4,
-        //    targetWhitelist = new string[] { "Pawn" },
-        //    targetBlacklist = new string[] { },
-        //    target = new BoardSquare[] { },
-        //    movement = new BoardSquare[] { },
-        //    required = new BoardSquare[] { }
-        //};
-        //private static patternClass blackBishopSwapsPC = new patternClass()
-        //{
-        //    allBoardMove = true,
-        //    mustTarget = true,
-        //    targetsAllies = true,
-        //    doesNotTargetEnemies = true,
-        //    switchPosition = true,
-        //    enabled = true,
-        //    moveDist = 4,
-        //    targetWhitelist = new string[] { "Pawn" },
-        //    targetBlacklist = new string[] { },
-        //    target = new BoardSquare[] { },
-        //    movement = new BoardSquare[] { },
-        //    required = new BoardSquare[] { }
-        //};
-        //private static patternClass whiteKnightSwapsPC = new patternClass()
-        //{
-        //    allBoardMove = true,
-        //    mustTarget = true,
-        //    targetsAllies = true,
-        //    doesNotTargetEnemies = true,
-        //    switchPosition = true,
-        //    enabled = true,
-        //    moveDist = 4,
-        //    targetWhitelist = new string[] { "Queen" },
-        //    targetBlacklist = new string[] { },
-        //    target = new BoardSquare[] { },
-        //    movement = new BoardSquare[] { },
-        //    required = new BoardSquare[] { }
-        //};
-        //private static patternClass blackKnightSwapsPC = new patternClass()
-        //{
-        //    allBoardMove = true,
-        //    mustTarget = true,
-        //    targetsAllies = true,
-        //    doesNotTargetEnemies = true,
-        //    switchPosition = true,
-        //    enabled = true,
-        //    moveDist = 4,
-        //    targetWhitelist = new string[] { "Queen" },
-        //    targetBlacklist = new string[] { },
-        //    target = new BoardSquare[] { },
-        //    movement = new BoardSquare[] { },
-        //    required = new BoardSquare[] { }
-        //};
-
-        //private static void UpdateTargetWhitelist(ref patternClass pc, Piece p, PieceTypeEnum[] pieceTypes)
-        //{
-        //    if (pieceTypes.Length == 0) { return; }
-        //    List<string> pieceNames = new List<string>(1);
-        //    for (int i = 0; i < pieceTypes.Length; i++)
-        //    {
-        //        Piece[] pieces = p.board.GetPieces(pieceTypes[i], p.team.color);
-        //        if (pieces.Length != 0)
-        //        {
-        //            pieceNames.Add(pieces[0].pieceName);
-        //        }
-        //    }
-        //    pc.targetWhitelist = pieceNames.ToArray();
-        //}
-
-        //private static void UpdatePatternForSwaps(Piece p)
-        //{
-        //    PieceTypeEnum pieceType = p.PieceType;
-        //    patternClass pc = null;
-        //    PieceTypeEnum[] pieceTypes = null;
-        //    switch (pieceType)
-        //    {
-        //        case PieceTypeEnum.Knight:
-        //        case PieceTypeEnum.Knight_alt:
-        //        case PieceTypeEnum.Griffin:
-        //            pc = (p.team.color == TeamColor.White) ? whiteKnightSwapsPC : blackKnightSwapsPC;
-        //            pieceTypes = new PieceTypeEnum[] {PieceTypeEnum.Queen, PieceTypeEnum.Baron,
-        //                    PieceTypeEnum.Duke, PieceTypeEnum.Chimp, PieceTypeEnum.Mole};
-        //            break;
-        //        case PieceTypeEnum.Bishop:
-        //            pc = (p.team.color == TeamColor.White) ? whiteBishopSwapsPC : blackBishopSwapsPC;
-        //            pieceTypes = new PieceTypeEnum[] { PieceTypeEnum.Pawn, PieceTypeEnum.SkeletonSummon };
-        //            break;
-        //        case PieceTypeEnum.Rook:
-        //        case PieceTypeEnum.Joy:
-        //        case PieceTypeEnum.Rage:
-        //            pc = (p.team.color == TeamColor.White) ? whiteRookSwapsPC : blackRookSwapsPC;
-        //            pieceTypes = new PieceTypeEnum[] { PieceTypeEnum.King, PieceTypeEnum.Madness };
-        //            break;
-        //        default:
-        //            break;
-        //    }
-        //    if (pc != null && pieceTypes != null)
-        //    {
-        //        UpdateTargetWhitelist(ref pc, p, pieceTypes);
-        //        if (p.patterns[p.patterns.Length - 1] != pc)
-        //        {
-        //            System.Array.Resize<patternClass>(ref p.patterns, p.patterns.Length + 1);
-        //            p.patterns[p.patterns.Length - 1] = pc;
-        //        }
-        //        initialized = true;
-        //    }
-        //}
-
-        //private static void Init_PatchPatterns(Board __instance)
-        //{
-
-        //    foreach (Team team in __instance.Teams)
-        //    {
-        //        foreach (Piece p in team.pieces.Values)
-        //        {
-        //            if (p == null) { continue; }
-        //            UpdatePatternForSwaps(p);
-        //        }
-        //    }
-        //}
-
-        //[HarmonyPrepare]
-        //public static void Init()
-        //{
-        //    if (PlayerInput.Instance == null || PlayerInput.Instance.board_instance == null) { return; }
-        //    Init_PatchPatterns(PlayerInput.Instance.board_instance);
-        //}
-
-        //[HarmonyPatch(typeof(Board), nameof(Board.init))]
-        //[HarmonyPostfix]
-        //public static void Postfix(Board __instance)
-        //{
-        //    Init_PatchPatterns(__instance);
-        //    // for (int i = 0; i < 8; i++)
-        //    // {
-        //    //     for (int j = 0; j < 8; j++)
-        //    //     {
-        //    //         __instance.SpawnWaterTile(new BoardSquare(i, j), __instance.activeTeam);
-        //    //     }
-        //    // }
-        //}
-
-        //[HarmonyPatch(typeof(Piece), nameof(Piece.MoveReplacedBySkill))]
-        //[HarmonyPrefix]
-        //public static bool Prefix_MovePatch(Piece __instance, [HarmonyArgument(0)] patternClass pattern, [HarmonyArgument(1)] bool hasTarget, [HarmonyArgument(2)] ref bool captured, ref PieceAction.PieceSkill __result)
-        //{
-        //    if (pattern.switchPosition)
-        //    {
-        //        captured = true;
-        //        __result = PieceAction.PieceSkill.SwitchPosition;
-        //        return false;
-        //    }
-        //    return true;
-        //}
-
-        //[HarmonyPatch(typeof(Piece), nameof(Piece.init))]
-        //[HarmonyPostfix]
-        //public static void Postfix_PieceInit(Piece __instance)
-        //{
-
-        //    switch (__instance.PieceType)
-        //    {
-        //        case PieceTypeEnum.Queen:
-        //        case PieceTypeEnum.Chimp:
-        //        case PieceTypeEnum.Mole:
-        //        case PieceTypeEnum.Duke:
-        //        case PieceTypeEnum.Baron:
-        //            foreach (Piece item in __instance.team.pieces.Values)
-        //            {
-        //                switch (item.PieceType)
-        //                {
-        //                    case PieceTypeEnum.Knight:
-        //                    case PieceTypeEnum.Knight_alt:
-        //                    case PieceTypeEnum.Griffin:
-        //                        UpdatePatternForSwaps(item);
-        //                        break;
-        //                    default:
-        //                        break;
-        //                }
-        //            }
-        //            break;
-        //        case PieceTypeEnum.Pawn:
-        //        case PieceTypeEnum.SkeletonSummon:
-        //            foreach (Piece item in __instance.team.pieces.Values)
-        //            {
-        //                switch (item.PieceType)
-        //                {
-        //                    case PieceTypeEnum.Bishop:
-        //                        UpdatePatternForSwaps(item);
-        //                        break;
-        //                    default:
-        //                        break;
-        //                }
-        //            }
-        //            break;
-        //        default:
-        //            UpdatePatternForSwaps(__instance);
-        //            break;
-        //    }
-        //}
-
-        //[HarmonyCleanup]
-        //public static void PatchCleanup()
-        //{
-        //    initialized = false;
-        //}
         [HarmonyPatch(typeof(PieceMoves), nameof(PieceMoves.RookMoves))]
         [HarmonyPostfix]
         public static void Postfix_Rook([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(1)] byte pc, List<PieceMoves.Move> __result)
         {
+            ChessBoardState.Team bias = Plugin.ModType.Tunnel_swaps.Bias();
+            if (bias != ChessBoardState.Team.None && ChessBoard.Instance.state.GetTeam(pc) != bias) { return; }
             byte b = (state.GetTeam(pc) == ChessBoardState.Team.White) ? state.white_king : state.black_king;
             __result.Add(new PieceMoves.Move(pc, b, 5, state.pieces[b].square, state.pieces[pc].square, 0));
         }
@@ -1588,6 +1390,8 @@ namespace MyFirstPlugin
         [HarmonyPostfix]
         public static void Postfix_Bishop([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(1)] byte pc, [HarmonyArgument(3)] bool IsAIMove, List<PieceMoves.Move> __result)
         {
+            ChessBoardState.Team bias = Plugin.ModType.Tunnel_swaps.Bias();
+            if (bias != ChessBoardState.Team.None && ChessBoard.Instance.state.GetTeam(pc) != bias) { return; }
             byte square = state.pieces[pc].square;
             foreach (byte b in state.GetPiecesOfTypeAndTeam(1, state.GetTeam(pc)))
             {
@@ -1599,6 +1403,8 @@ namespace MyFirstPlugin
         [HarmonyPostfix]
         public static void Postfix_Knight([HarmonyArgument(0)] ChessBoardState state, [HarmonyArgument(1)] byte pc, List<PieceMoves.Move> __result)
         {
+            ChessBoardState.Team bias = Plugin.ModType.Tunnel_swaps.Bias();
+            if (bias != ChessBoardState.Team.None && ChessBoard.Instance.state.GetTeam(pc) != bias) { return; }
             byte square = state.pieces[pc].square;
             using (List<byte>.Enumerator enumerator = state.GetPiecesOfTypeAndTeam(5, state.GetTeam(pc)).GetEnumerator())
             {
@@ -1620,7 +1426,8 @@ namespace MyFirstPlugin
         [HarmonyPrefix]
         public static void Prefix(ChessBoardState __instance, [HarmonyArgument(0)] ChessBoardState.Team team, [HarmonyArgument(1)] ref int add)
         {
-            if (add > 0 && __instance.GetCurrentTeam() == Plugin.Instance.teamFavor)
+            ChessBoardState.Team bias = Plugin.ModType.Super_Secrets.Bias();
+            if (add > 0 && (bias == ChessBoardState.Team.None || __instance.GetCurrentTeam() == bias))
             {
                 add += team == ChessBoardState.Team.White ? whiteManaBonus : blackManaBonus;
             }
@@ -1630,28 +1437,32 @@ namespace MyFirstPlugin
         [HarmonyPostfix]
         public static void PostFix(ChessBoard __instance, ref bool __result)
         {
-            if (__result && __instance.state.GetCurrentTeam() == Plugin.Instance.teamFavor)
+            ChessBoardState.Team bias = Plugin.ModType.Super_Secrets.Bias();
+            if (__result && (bias == ChessBoardState.Team.None || __instance.state.GetCurrentTeam() == bias))
             {
                 byte t = __instance.next_move.move_type;
-                
-                if (t == 20 || t == 22 || t == 23 || t == 24 || t == 25) { 
+
+                if (t == 20 || t == 22 || t == 23 || t == 24 || t == 25)
+                {
                     //__instance.state.pieces[__instance.next_move.piece_moved].type = t;
                     if (__instance.state.GetCurrentTeam() == ChessBoardState.Team.White)
                     {
                         whiteManaBonus++;
+                        Plugin.Instance.LogThisInfo($" . . . Mana Income Bonus increased to +{whiteManaBonus}. . . ");
                     }
                     else
                     {
                         blackManaBonus++;
+                        Plugin.Instance.LogThisInfo($" . . . Mana Income Bonus increased to +{blackManaBonus}. . . ");
                     }
-                    Plugin.Instance.LogThisInfo(" . . . Mana Income Increased . . . ");
+                    
                 }
             }
         }
 
         [HarmonyPatch(typeof(ChessBoard), nameof(ChessBoard.Init))]
         [HarmonyPostfix]
-        public static void Init(ChessBoard __instance)
+        public static void Init()
         {
             whiteManaBonus = 0;
             blackManaBonus = 0;
@@ -1660,15 +1471,27 @@ namespace MyFirstPlugin
 
     public static class WaterTilesBoostAlliesAndDebuffEnemies
     {
+        [HarmonyPrepare]
+        public static void Init()
+        {
+            if (Plugin.ModType.Water_of_Magic.Bias() == ChessBoardState.Team.None)
+            {
+                Plugin.Instance.LogThisInfo("Please use a meaningful bias for this mod.(White/Black)");
+            }
+        }
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(ChessBoardState), nameof(ChessBoardState.DoEndOfTurnAdjustments))]
         public static void Postfix(ChessBoardState __instance)
         {
             foreach (byte square in __instance.GetWaterTiles())
             {
-                if (Plugin.Instance.teamFavor == ChessBoardState.Team.None) { return; }
+                if (Plugin.ModType.Water_of_Magic.Bias() == ChessBoardState.Team.None)
+                { 
+                    return;
+                }
                 byte p = __instance.GetPieceOnSquare(square);
-                if (__instance.GetTeam(p) == Plugin.Instance.teamFavor)
+                if (__instance.GetTeam(p) == Plugin.ModType.Water_of_Magic.Bias())
                 {
                     if (__instance.pieces[p].IsPawn() || __instance.pieces[p].IsKnight() ||
                         __instance.pieces[p].type == ChessBoardState.Piece.Type_Bishop)
@@ -1696,8 +1519,8 @@ namespace MyFirstPlugin
         public static bool QueenMoves_Patch(ChessBoardState state, bool time_shift, byte pc, ref List<PieceMoves.Move> __result)
         {
             ChessBoardState.Team team = state.GetTeam(pc);
-            if (Plugin.Instance.teamFavor != ChessBoardState.Team.None &&
-                team != Plugin.Instance.teamFavor || state.pieces[pc].race != 1) { return true; }
+            if (Plugin.ModType.Super_Aliens.Bias() != ChessBoardState.Team.None &&
+                team != Plugin.ModType.Super_Aliens.Bias() || state.pieces[pc].race != 1) { return true; }
             PieceMoves.CanCapture canCapture = time_shift ? PieceMoves.CanCapture.trunk_only : PieceMoves.CanCapture.all;
             List<PieceMoves.Move> list = new List<PieceMoves.Move>();
             List<PieceMoves.Move> list2 = Utility.StraightSlideMoves(state, team, pc, 3, 0, canCapture, false, false);
@@ -1716,15 +1539,15 @@ namespace MyFirstPlugin
                 __result = list; return false;
             }
         }
-        
+
         [HarmonyPatch(typeof(PieceMoves), nameof(PieceMoves.RookMoves))]
         [HarmonyPrefix]
         public static bool RookMoves_Patch(ChessBoardState state, byte pc, bool time_shift, ref List<PieceMoves.Move> __result)
         {
 
             ChessBoardState.Team team = state.GetTeam(pc);
-            if (Plugin.Instance.teamFavor != ChessBoardState.Team.None &&
-                team != Plugin.Instance.teamFavor || state.pieces[pc].race != 1) { return true; }
+            if (Plugin.ModType.Super_Aliens.Bias() != ChessBoardState.Team.None &&
+                team != Plugin.ModType.Super_Aliens.Bias() || state.pieces[pc].race != 1) { return true; }
             PieceMoves.CanCapture capture_possible = time_shift ? PieceMoves.CanCapture.trunk_only : PieceMoves.CanCapture.all;
             List<PieceMoves.Move> list = new List<PieceMoves.Move>();
             using (List<PieceMoves.Move>.Enumerator enumerator = Utility.StraightSlideMoves(state, team, pc, 4, 0, capture_possible, false, false).GetEnumerator())
@@ -1741,15 +1564,14 @@ namespace MyFirstPlugin
                 __result = list;
                 return false;
             }
-            return true;
         }
 
         [HarmonyPatch(typeof(PieceMoves), "PawnMoveOnSquare")]
         [HarmonyPrefix]
         public static bool PawnMoveOnSquare_Patch(PieceMoves.Move move, byte piece, byte square, ChessBoardState state, List<PieceMoves.Move> list)
         {
-            if (Plugin.Instance.teamFavor != ChessBoardState.Team.None &&
-                state.GetTeam(piece) != Plugin.Instance.teamFavor) { return true; }
+            if (Plugin.ModType.Super_Aliens.Bias() != ChessBoardState.Team.None &&
+                state.GetTeam(piece) != Plugin.ModType.Super_Aliens.Bias()) { return true; }
             if (!state.CanPromoteOnSquare(piece, (int)square) && move.option == 0 &&
                 move.move_type != PieceMoves.Move.Type_Capture &&
                 state.last_move.option == PieceMoves.Move.Option_Time_Harvest &&
@@ -1766,8 +1588,8 @@ namespace MyFirstPlugin
         [HarmonyPrefix]
         public static bool BishopMoves_Patch(ChessBoardState state, byte pc, bool time_shift, ref List<PieceMoves.Move> __result)
         {
-            if (Plugin.Instance.teamFavor != ChessBoardState.Team.None &&
-                state.GetTeam(pc) != Plugin.Instance.teamFavor || state.pieces[pc].race != 1) { return true; }
+            if ((Plugin.ModType.Super_Aliens.Bias() != ChessBoardState.Team.None &&
+                state.GetTeam(pc) != Plugin.ModType.Super_Aliens.Bias()) || state.pieces[pc].race != 1) { return true; }
             ChessBoardState.Piece piece = state.pieces[(int)pc];
             ChessBoardState.Team team = state.GetTeam(pc);
             List<PieceMoves.Move> list = new List<PieceMoves.Move>();
@@ -1798,7 +1620,7 @@ namespace MyFirstPlugin
                     move.option = PieceMoves.Move.Option_Time_Shift;
                     list.Add(move);
                 }
-                
+
                 __result = list; return false;
             }
             return true;
@@ -1897,7 +1719,109 @@ namespace MyFirstPlugin
             return false;
         }
     }
-    
+
+    public static class AngelsAbilitiesHaveMoreRange
+    {
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ChessBoardState), nameof(ChessBoardState.CanCapture))]
+        public static bool Zealot_OrthoShield_Patch(ChessBoardState __instance, ChessBoardState.Team team, bool move_only, byte capturer, byte target, ref bool __result)
+        {
+            if ((Plugin.ModType.Super_Aliens.Bias() == ChessBoardState.Team.None || __instance.GetTeam(target) == Plugin.ModType.Super_Aliens.Bias()) && __instance.pieces[target].race == 2 && __instance.pieces[target].type == ChessBoardState.Piece.Type_Bishop)
+            {
+                ChessBoardState.Piece targetPiece = __instance.pieces[target];
+                ChessBoardState.Team team1 = __instance.GetTeam(target);
+                int tx, ty, cx, cy;
+                Utility.IndexToPos(targetPiece.square, out tx, out ty);
+                Utility.IndexToPos(__instance.pieces[capturer].square, out cx, out cy);
+                if (tx == cx || (team1 == ChessBoardState.Team.White && ty <= cy) ||
+                    (team1 == ChessBoardState.Team.Black && ty >= cy))
+                {
+                    __result = false;
+                    return false;
+                }
+                return true;
+            }
+            return true;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ChessBoardState), nameof(ChessBoardState.IsProtectedByAngelRook))]
+        public static bool AngelRook_Patch(ChessBoardState __instance, byte pc, ref bool __result)
+        {
+            //if (__instance.pieces[(int)pc].race == 2 && __instance.pieces[(int)pc].type == 4)
+            //{
+            //    __result = false;
+            //    return false;
+            //}
+            ChessBoardState.Team team = __instance.GetTeam(pc);
+            if (team != Plugin.ModType.Super_Aliens.Bias()) { return true; }
+            byte b = __instance.pieces[(int)pc].square;
+            for (int i = 0; i < 8; i++)
+            {
+                if (team == ChessBoardState.Team.White)
+                {
+                    b -= 8;
+                }
+                else
+                {
+                    b += 8;
+                }
+                if (ChessBoard.IsValidSquare((int)b))
+                {
+                    byte pieceOnSquare = __instance.GetPieceOnSquare((int)b);
+                    if (pieceOnSquare > 0 && __instance.GetTeam(pieceOnSquare) == team && __instance.pieces[(int)pieceOnSquare].race == 2 && __instance.pieces[(int)pieceOnSquare].type == 4)
+                    {
+                        __result = true;
+                        return false;
+                    }
+                }
+            }
+            b = (byte)(__instance.pieces[(int)pc].square - 4);
+            for (int i = -4; i < 4; i++)
+            {
+
+                if (ChessBoard.IsValidSquare((int)b))
+                {
+                    byte pieceOnSquare = __instance.GetPieceOnSquare((int)b);
+                    if (pieceOnSquare > 0 && __instance.GetTeam(pieceOnSquare) == team && __instance.pieces[(int)pieceOnSquare].race == 2 && __instance.pieces[(int)pieceOnSquare].type == 4)
+                    {
+                        __result = true;
+                        return false;
+                    }
+                }
+                b++;
+            }
+            __result = false;
+            return false;
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(ChessBoardState), nameof(ChessBoardState.DoEndOfTurnAdjustments))]
+        public static void DoEndOfTurnAdjustments(ChessBoardState __instance, PieceMoves.Move mov) {
+            //if (Plugin.Instance.teamFavor == ChessBoardState.Team.None) { return; }
+            for (byte b = 0; b < 64; b += 1) {
+                byte pieceOnSquare = __instance.GetPieceOnSquare((int)b);
+                if (pieceOnSquare != 0 && __instance.pieces[pieceOnSquare].race == ChessBoardState.Piece.Race_Angels
+                    && !__instance.pieces[pieceOnSquare].IsPawn() && (Plugin.ModType.Super_Aliens.Bias() == ChessBoardState.Team.None || __instance.GetTeam(pieceOnSquare) == Plugin.ModType.Super_Aliens.Bias())) {
+                    using (List<byte>.Enumerator enumerator = __instance.GetSurroundingTiles(__instance.pieces[pieceOnSquare].square).GetEnumerator())
+					{
+						while (enumerator.MoveNext())
+						{
+							byte s = enumerator.Current;
+							byte pieceOnSquare4 = __instance.GetPieceOnSquare((int)s);
+                            ChessBoardState.Team team2 = __instance.GetTeam(pieceOnSquare4);
+
+                            if (pieceOnSquare4 > 0 && team2 == __instance.GetOpposingTeam(pieceOnSquare) && (Plugin.ModType.Super_Aliens.Bias() == ChessBoardState.Team.None || team2 != Plugin.ModType.Super_Aliens.Bias()) && !__instance.pieces[(int)pieceOnSquare4].IsPawn())
+							{
+								__instance.pieces[(int)pieceOnSquare4].AddFlag(64);
+							}
+						}
+					}
+                }
+            }
+        }
+    }
+
     public static class Utility
     {
         public static string positionToString(int x, int y)
@@ -1934,7 +1858,7 @@ namespace MyFirstPlugin
                     break;
             }
             return result;
-        }    
+        }
         public static bool IsTeamAI(ChessBoardState.Team team)
         {
             return (team == ChessBoardState.Team.White && PlayerInput.Instance.player_1_is_AI) || (team == ChessBoardState.Team.Black && PlayerInput.Instance.player_2_is_AI);
@@ -2146,13 +2070,23 @@ namespace MyFirstPlugin
             return can_jump || b2 != 9;
         }
     }
-    
+
     public static class Extensions
     {
+        public static ChessBoardState.Team Bias(this Plugin.ModType modType)
+        {
+            return Plugin.biasDict[modType];
+        }
+
+        public static string CleanName(this Plugin.ModType modType)
+        {
+            return modType.ToString().Replace('_', ' ');
+        }
+
         public static TextMeshProUGUI[] turnNumbers(this MoveHistoryUI self)
         {
             FieldInfo fieldInfo = typeof(MoveHistoryUI).GetField("turnNumbers", BindingFlags.NonPublic | BindingFlags.DeclaredOnly | BindingFlags.Instance);
-            
+
             return (TextMeshProUGUI[])fieldInfo.GetValue(self);
         }
 
@@ -2171,4 +2105,18 @@ namespace MyFirstPlugin
         }
     }
 
+    public abstract class BalancedMod
+    {
+        private ChessBoardState.Team bias = ChessBoardState.Team.None;
+
+        public void SetBias(ChessBoardState.Team team)
+        {
+            this.bias = team;
+        }
+
+        public ChessBoardState.Team GetBias()
+        {
+            return this.bias;
+        }
+    }
 }
